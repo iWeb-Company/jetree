@@ -1,17 +1,15 @@
 import { GoogleGenAI } from '@google/genai';
 
-const defaultApiKey = process.env.GEMINI_API_KEY || '';
-
-export async function analyzeWithGemini(prompt: string, apiKeyOverride?: string, model: string = 'gemini-2.5-flash') {
+export async function analyzeWithGemini(prompt: string, apiKey: string, model: string = 'gemini-2.5-flash') {
+  if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');
   try {
-    const aiClient = new GoogleGenAI({ apiKey: apiKeyOverride || defaultApiKey });
+    const aiClient = new GoogleGenAI({ apiKey });
     const response = await aiClient.models.generateContent({
       model: model || 'gemini-2.5-flash',
       contents: prompt,
     });
     return response.text;
   } catch (error) {
-    console.error('Error al analizar con Gemini:', error);
     throw error;
   }
 }

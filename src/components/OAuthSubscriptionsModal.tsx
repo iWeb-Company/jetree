@@ -2,174 +2,183 @@
 
 import React, { useState } from 'react';
 import { UserSubscription } from '@/types';
+import { supabase } from '@/lib/supabase';
+
+type Provider = UserSubscription['provider'];
 
 interface OAuthSubscriptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
   userEmail: string;
   subscriptions: UserSubscription[];
-  onToggleSubscription: (provider: 'openai' | 'gemini' | 'claude') => void;
+  onConnectionChange: (provider: Provider, connected: boolean, connectedAt?: string) => void;
 }
+
+const providerInfo: Record<Provider, { title: string; icon: string; color: string; description: string }> = {
+  openai: {
+    title: 'OpenAI Platform',
+    icon: '🟢',
+    color: 'emerald',
+    description: 'Usa una API key de OpenAI Platform. ChatGPT Pro no incluye crédito para la API; la conexión de Codex por suscripción se validará aparte.',
+  },
+  gemini: {
+    title: 'Gemini API',
+    icon: '✨',
+    color: 'cyan',
+    description: 'Usa una API key de Gemini API con su propia cuota y facturación. La suscripción Google AI Pro no se reutiliza desde Jetree.',
+  },
+  claude: {
+    title: 'Anthropic API',
+    icon: '🟣',
+    color: 'purple',
+    description: 'Usa una API key de Anthropic Console. El inicio de sesión de Claude Pro/Max no se conecta ni se almacena en Jetree.',
+  },
+  custom: {
+    title: 'Otros modelos (OpenRouter)',
+    icon: '🔑',
+    color: 'amber',
+    description: 'Conecta tu API key de OpenRouter y elegí el ID del modelo al configurar cada agente.',
+  },
+};
+
+const providers: Provider[] = ['openai', 'claude', 'gemini', 'custom'];
 
 export default function OAuthSubscriptionsModal({
   isOpen,
   onClose,
   userEmail,
   subscriptions,
-  onToggleSubscription,
+  onConnectionChange,
 }: OAuthSubscriptionsModalProps) {
-  const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
+  const [apiKeys, setApiKeys] = useState<Partial<Record<Provider, string>>>({});
+  const [busyProvider, setBusyProvider] = useState<Provider | null>(null);
+  const [feedback, setFeedback] = useState<{ provider: Provider; message: string; error?: boolean } | null>(null);
 
   if (!isOpen) return null;
 
-  const handleConnect = (provider: 'openai' | 'gemini' | 'claude') => {
-    setConnectingProvider(provider);
-    // A provider connection is only marked active after a server-side callback.
-    // The current UI intentionally does not fabricate an OAuth success state.
-    setTimeout(() => setConnectingProvider(null), 400);
+  const getAuthHeaders = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) throw new Error('Iniciá sesión para administrar conexiones.');
+    return { Authorization: `Bearer ${data.session.access_token}` };
   };
 
-  const getProviderInfo = (provider: 'openai' | 'gemini' | 'claude') => {
-    switch (provider) {
-      case 'openai':
-        return {
-          title: 'OpenAI (ChatGPT Pro / Plus)',
-          icon: '🟢',
-          color: 'emerald',
-          desc: 'Habilita GPT-4o, GPT-4o-mini y capacidades avanzadas de razonamiento.',
-          defaultTier: 'ChatGPT Pro / Team',
-        };
-      case 'gemini':
-        return {
-          title: 'Google Gemini Pro / Advanced',
-          icon: '✨',
-          color: 'cyan',
-          desc: 'Habilita Gemini 2.5 Flash, Gemini 1.5 Pro y multimodalidad de Google Cloud.',
-          defaultTier: 'Gemini Advanced (Google One AI)',
-        };
-      case 'claude':
-        return {
-          title: 'Anthropic Claude Pro / Team',
-          icon: '🟣',
-          color: 'purple',
-          desc: 'Habilita Claude 3.5 Sonnet, Claude 3.5 Haiku y síntesis profunda.',
-          defaultTier: 'Claude Pro Account',
-        };
+  const saveConnection = async (provider: Provider) => {
+    const apiKey = apiKeys[provider]?.trim();
+    if (!apiKey) {
+      setFeedback({ provider, message: 'Ingresá una API key para guardar la conexión.', error: true });
+      return;
+    }
+
+    setBusyProvider(provider);
+    setFeedback(null);
+    try {
+      const response = await fetch('/api/provider-connections', {
+        method: 'POST',
+        headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, apiKey }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo guardar la conexión.');
+      setApiKeys(current => ({ ...current, [provider]: '' }));
+      onConnectionChange(provider, true, payload.connection?.connected_at);
+      setFeedback({ provider, message: 'API key cifrada y guardada. Jetree la usará solo en ejecuciones de tu usuario.' });
+    } catch (error) {
+      setFeedback({ provider, message: error instanceof Error ? error.message : 'No se pudo guardar la conexión.', error: true });
+    } finally {
+      setBusyProvider(null);
+    }
+  };
+
+  const disconnect = async (provider: Provider) => {
+    setBusyProvider(provider);
+    setFeedback(null);
+    try {
+      const response = await fetch(`/api/provider-connections?provider=${provider}`, {
+        method: 'DELETE',
+        headers: await getAuthHeaders(),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo revocar la conexión.');
+      onConnectionChange(provider, false);
+      setFeedback({ provider, message: 'Conexión revocada y credencial eliminada.' });
+    } catch (error) {
+      setFeedback({ provider, message: error instanceof Error ? error.message : 'No se pudo revocar la conexión.', error: true });
+    } finally {
+      setBusyProvider(null);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-[#080c14] border border-cyan-950/80 rounded-2xl max-w-xl w-full shadow-2xl p-6 space-y-6">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-cyan-950/60 pb-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <div className="max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border border-cyan-950/80 bg-[#080c14] p-6 shadow-2xl">
+        <div className="flex items-start justify-between border-b border-cyan-950/60 pb-4">
           <div>
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <span>🔐</span>
-              <span>Conectar Suscripciones de IA (OAuth)</span>
+            <h3 className="flex items-center gap-2 text-lg font-bold text-white">
+              <span>🔐</span> Conexiones de modelos
             </h3>
-            <p className="text-xs text-gray-400 mt-1">
-              Vincula tus cuentas profesionales para habilitar sus modelos en tus agentes y departamentos.
-            </p>
+            <p className="mt-1 text-xs text-gray-400">Configurá credenciales API propias para {userEmail}.</p>
           </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center transition-all"
-          >
-            ✕
-          </button>
+          <button onClick={onClose} aria-label="Cerrar" className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-800 bg-gray-900 text-gray-400 hover:text-white">✕</button>
         </div>
 
-        {/* Info Usuario */}
-        <div className="p-3 bg-cyan-950/20 border border-cyan-900/40 rounded-xl flex items-center justify-between text-xs">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-            <span className="text-gray-300">Usuario activo: <strong>{userEmail}</strong></span>
-          </div>
-          <span className="text-[10px] text-cyan-400 font-mono">Workspace Seguro</span>
-        </div>
-
-        {/* Lista de Proveedores OAuth */}
         <div className="space-y-3.5">
-          {(['gemini', 'openai', 'claude'] as const).map(provider => {
-            const sub = subscriptions.find(s => s.provider === provider);
-            const isConnected = sub?.connected || false;
-            const info = getProviderInfo(provider);
-            const isConnecting = connectingProvider === provider;
-
+          {providers.map(provider => {
+            const connection = subscriptions.find(item => item.provider === provider);
+            const info = providerInfo[provider];
+            const busy = busyProvider === provider;
             return (
-              <div
-                key={provider}
-                className={`p-4 rounded-xl border transition-all flex items-center justify-between gap-4 ${
-                  isConnected
-                    ? 'bg-cyan-950/15 border-cyan-500/30'
-                    : 'bg-[#05070b] border-cyan-950/60 hover:border-cyan-900/60'
-                }`}
-              >
+              <section key={provider} className={`space-y-3 rounded-xl border p-4 ${connection?.connected ? 'border-emerald-700/40 bg-emerald-950/10' : 'border-cyan-950/60 bg-[#05070b]'}`}>
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-gray-900/80 border border-gray-800 flex items-center justify-center text-xl shrink-0">
-                    {info.icon}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-semibold text-white text-sm">{info.title}</h4>
-                      {isConnected ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/40 text-emerald-400 border border-emerald-800/40 font-mono font-medium">
-                          ✓ Conectado ({sub?.tier || 'Pro'})
-                        </span>
-                      ) : (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 font-mono">
-                          No vinculado
-                        </span>
-                      )}
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-800 bg-gray-900/80 text-xl">{info.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="text-sm font-semibold text-white">{info.title}</h4>
+                      <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${connection?.connected ? 'border-emerald-800/40 bg-emerald-950/40 text-emerald-400' : 'border-gray-800 bg-gray-900 text-gray-500'}`}>
+                        {connection?.connected ? 'API key guardada' : 'Sin configurar'}
+                      </span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1 leading-relaxed">{info.desc}</p>
-                    {isConnected && sub?.connectedAt && (
-                      <p className="text-[10px] text-gray-500 font-mono mt-1">
-                        Vinculado: {new Date(sub.connectedAt).toLocaleDateString()}
-                      </p>
-                    )}
+                    <p className="mt-1 text-xs leading-relaxed text-gray-400">{info.description}</p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  disabled={isConnecting}
-                  onClick={() => handleConnect(provider)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition-all ${
-                    isConnected
-                      ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30'
-                      : 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-lg shadow-cyan-500/20'
-                  }`}
-                >
-                  {isConnecting ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-black animate-ping"></span>
-                      Autenticando...
-                    </span>
-                  ) : isConnected ? (
-                    'Desconectar'
-                  ) : (
-                    'Iniciar con OAuth'
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={apiKeys[provider] || ''}
+                    onChange={event => setApiKeys(current => ({ ...current, [provider]: event.target.value }))}
+                    placeholder={connection?.connected ? 'Ingresá una nueva key para reemplazarla' : 'API key'}
+                    aria-label={`API key de ${info.title}`}
+                    className="min-w-0 flex-1 rounded-lg border border-cyan-950/80 bg-[#080c14] px-3 py-2 font-mono text-xs text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    disabled={busy || !(apiKeys[provider] || '').trim()}
+                    onClick={() => saveConnection(provider)}
+                    className="rounded-lg bg-cyan-500 px-3.5 py-2 text-xs font-semibold text-black transition-colors hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {busy ? 'Guardando…' : connection?.connected ? 'Reemplazar key' : 'Guardar key'}
+                  </button>
+                  {connection?.connected && (
+                    <button type="button" disabled={busy} onClick={() => disconnect(provider)} className="rounded-lg border border-red-800/50 px-3.5 py-2 text-xs font-semibold text-red-300 hover:bg-red-950/30 disabled:opacity-40">
+                      Revocar
+                    </button>
                   )}
-                </button>
-              </div>
+                </div>
+                {feedback?.provider === provider && (
+                  <p role="status" className={`text-xs ${feedback.error ? 'text-rose-300' : 'text-emerald-300'}`}>{feedback.message}</p>
+                )}
+              </section>
             );
           })}
         </div>
 
-        {/* Footer */}
-        <div className="pt-3 border-t border-cyan-950/60 flex items-center justify-between text-xs text-gray-400">
-          <span>Tus suscripciones solo se usan para tus agentes asignados.</span>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-white font-medium transition-all"
-          >
-            Listo
-          </button>
+        <div className="rounded-xl border border-cyan-950/60 bg-cyan-950/10 p-3 text-xs leading-relaxed text-gray-400">
+          Las claves se cifran en el servidor y la interfaz nunca vuelve a recibirlas. Guardar una key confirma que quedó almacenada, no que el proveedor ya la validó.
         </div>
-
+        <div className="flex justify-end border-t border-cyan-950/60 pt-3">
+          <button onClick={onClose} className="rounded-xl bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800">Cerrar</button>
+        </div>
       </div>
     </div>
   );

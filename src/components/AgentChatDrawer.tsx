@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Agent, ChatMessage, AgentActivityLog } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 interface AgentChatDrawerProps {
   isOpen: boolean;
@@ -66,14 +67,18 @@ export default function AgentChatDrawer({
     setLoading(true);
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) throw new Error('La sesión expiró. Iniciá sesión nuevamente.');
       const res = await fetch('/api/agents/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
         body: JSON.stringify({
-          agent,
+          agentId: agent.id,
           message: userMsgText,
-          availableAgents,
-          chatHistory: messages.map(m => ({ role: m.role, content: m.content })),
+          chatHistory: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
         }),
       });
 

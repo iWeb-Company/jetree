@@ -113,12 +113,6 @@ export default function AgentCard({
             </span>
           )}
 
-          {agent.customApiKey && (
-            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-md bg-amber-950/40 text-amber-300 border border-amber-800/40 font-mono">
-              <span>🔑</span>
-              <span>API Key propia</span>
-            </span>
-          )}
         </div>
 
         {/* Si es Manager: mostrar qué subordinados tiene a cargo */}
