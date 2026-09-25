@@ -28,26 +28,32 @@ export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Estados de Suscripciones OAuth del Usuario
+  // Conexiones de proveedor API propias del usuario (solo estado, nunca claves).
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([
     {
       id: 'sub-gemini',
       provider: 'gemini',
-      name: 'Google Gemini Pro / Advanced',
+      name: 'Gemini API',
       connected: false,
     },
     {
       id: 'sub-openai',
       provider: 'openai',
-      name: 'OpenAI (ChatGPT Pro / Plus)',
+      name: 'OpenAI API',
       connected: false,
     },
     {
       id: 'sub-claude',
       provider: 'claude',
-      name: 'Anthropic Claude Pro',
+      name: 'Anthropic API',
       connected: false,
-      tier: 'Claude Pro',
+      tier: 'API propia',
+    },
+    {
+      id: 'sub-custom',
+      provider: 'custom',
+      name: 'OpenRouter',
+      connected: false,
     },
   ]);
 
@@ -80,19 +86,22 @@ export default function Home() {
       const userKey = session?.user?.id || session?.user?.email || 'anonymous';
       const savedAgents = localStorage.getItem(`jetree_agents:${userKey}`);
       if (savedAgents) {
-        setAgents(JSON.parse(savedAgents));
-      }
-      const savedSubs = localStorage.getItem(`jetree_user_subscriptions:${userKey}`);
-      if (savedSubs) {
-        setSubscriptions(JSON.parse(savedSubs));
+        const parsedAgents = JSON.parse(savedAgents);
+        const safeAgents = Array.isArray(parsedAgents) ? parsedAgents.map((agent: Agent) => {
+          const { customApiKey: _legacyKey, ...safeAgent } = agent as Agent & { customApiKey?: string };
+          return safeAgent;
+        }) : [];
+        setAgents(safeAgents);
+        localStorage.setItem(`jetree_agents:${userKey}`, JSON.stringify(safeAgents));
       }
 
       if (session) {
         supabase.auth.getSession().then(async ({ data: { session: authSession } }) => {
           const headers: Record<string, string> = authSession?.access_token ? { Authorization: `Bearer ${authSession.access_token}` } : {};
-          const [agentsResponse, departmentsResponse] = await Promise.all([
+          const [agentsResponse, departmentsResponse, connectionsResponse] = await Promise.all([
             fetch('/api/agents', { headers }),
             fetch('/api/departments', { headers }),
+            fetch('/api/provider-connections', { headers }),
           ]);
           if (agentsResponse.ok) {
             const payload = await agentsResponse.json();
@@ -110,7 +119,22 @@ export default function Home() {
             const payload = await departmentsResponse.json();
             if (payload.departments?.length) setDepartments(payload.departments);
           }
+          if (connectionsResponse.ok) {
+            const payload = await connectionsResponse.json();
+            const connections = Array.isArray(payload.connections) ? payload.connections : [];
+            setSubscriptions(current => current.map(item => {
+              const connection = connections.find((entry: any) => entry.provider === item.provider);
+              return {
+                ...item,
+                connected: connection?.status === 'configured',
+                connectedAt: connection?.connected_at,
+                tier: connection?.status === 'configured' ? 'API propia' : undefined,
+              };
+            }));
+          }
         }).catch(error => console.warn('No se pudieron cargar los datos del workspace', error));
+      } else {
+        setSubscriptions(current => current.map(item => ({ ...item, connected: false, connectedAt: undefined })));
       }
     } catch (e) {
       console.warn('No se pudieron leer los agentes locales', e);
@@ -128,35 +152,16 @@ export default function Home() {
     }
   };
 
-  // Alternar suscripción OAuth
-  const handleToggleSubscription = (provider: 'openai' | 'gemini' | 'claude') => {
-    const updated = subscriptions.map(s => {
-      if (s.provider === provider) {
-        const nextState = !s.connected;
-        return {
-          ...s,
-          connected: nextState,
-          connectedAt: nextState ? new Date().toISOString() : undefined,
-          userAccountEmail: nextState ? (session?.user?.email || 'usuario@iweb.com') : undefined,
-        };
-      }
-      return s;
-    });
-
-    setSubscriptions(updated);
-    try {
-      const userKey = session?.user?.id || session?.user?.email || 'anonymous';
-      localStorage.setItem(`jetree_user_subscriptions:${userKey}`, JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Error guardando suscripciones', e);
-    }
-
-    const provName = provider === 'openai' ? 'ChatGPT Pro' : provider === 'gemini' ? 'Gemini Pro' : 'Claude Pro';
+  const handleProviderConnectionChange = (provider: UserSubscription['provider'], connected: boolean, connectedAt?: string) => {
+    setSubscriptions(current => current.map(item => item.provider === provider
+      ? { ...item, connected, connectedAt, tier: connected ? 'API propia' : undefined }
+      : item));
+    const name = subscriptions.find(item => item.provider === provider)?.name || provider;
     addNewLog({
-      id: `log-oauth-${Date.now()}`,
+      id: `log-provider-${Date.now()}`,
       timestamp: new Date().toISOString(),
-      type: 'manager_analysis',
-      message: `Suscripción OAuth de ${provName} ${updated.find(s => s.provider === provider)?.connected ? 'vinculada con éxito' : 'desconectada'}.`,
+      type: connected ? 'completed' : 'manager_analysis',
+      message: `Conexión API de ${name} ${connected ? 'guardada' : 'revocada'} para el usuario actual.`,
     });
   };
 
@@ -321,7 +326,7 @@ export default function Home() {
         name: savedAgent.name,
         description: savedAgent.description,
         role_type: savedAgent.roleType,
-        provider: savedAgent.provider === 'custom' ? 'openai' : savedAgent.provider,
+        provider: savedAgent.provider,
         model: savedAgent.model,
         system_prompt: savedAgent.systemPrompt,
         subordinate_ids: savedAgent.subordinateIds || [],
@@ -500,7 +505,7 @@ export default function Home() {
   // ----------------------------------------------------------------
   const managersCount = agents.filter(a => a.roleType === 'manager').length;
   const independentCount = agents.filter(a => a.roleType === 'independent').length;
-  const connectedOAuthCount = subscriptions.filter(s => s.connected).length;
+  const connectedProvidersCount = subscriptions.filter(s => s.connected).length;
   const telegramBotsCount = agents.filter(a => a.telegramBot?.botToken).length;
 
   return (
@@ -525,16 +530,16 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Botón Gestión de Suscripciones OAuth */}
+            {/* Botón Gestión de conexiones API */}
             <button
               onClick={() => setIsOAuthModalOpen(true)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 text-purple-300 border border-purple-800/40 text-xs font-semibold transition-all shadow-sm"
-              title="Vincular suscripciones de ChatGPT Pro, Gemini Pro y Claude Pro"
+              title="Administrar conexiones API propias"
             >
               <span>🔐</span>
-              <span className="hidden sm:inline">Suscripciones IA</span>
+              <span className="hidden sm:inline">Conexiones IA</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-200 font-mono">
-                {connectedOAuthCount}/3
+                {connectedProvidersCount}/4
               </span>
             </button>
 
@@ -727,7 +732,7 @@ export default function Home() {
                     className="px-3.5 py-2.5 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 text-purple-300 border border-purple-800/40 text-xs font-semibold transition-all flex items-center gap-1.5"
                   >
                     <span>🔐</span>
-                    <span>Suscripciones OAuth</span>
+                    <span>Conexiones API ({connectedProvidersCount})</span>
                   </button>
 
                   <button
@@ -846,13 +851,13 @@ export default function Home() {
         }}
       />
 
-      {/* MODAL DE SUSCRIPCIONES OAUTH */}
+      {/* MODAL DE CONEXIONES DE PROVEEDORES */}
       <OAuthSubscriptionsModal
         isOpen={isOAuthModalOpen}
         onClose={() => setIsOAuthModalOpen(false)}
         userEmail={session.user.email}
         subscriptions={subscriptions}
-        onToggleSubscription={handleToggleSubscription}
+        onConnectionChange={handleProviderConnectionChange}
       />
 
       {/* MODAL DE VINCULACIÓN CON BOTFATHER DE TELEGRAM */}
