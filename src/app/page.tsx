@@ -1,20 +1,195 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Sidebar from '@/components/Sidebar';
 import DepartmentTree from '@/components/DepartmentTree';
+import AgentCard from '@/components/AgentCard';
+import AgentModal from '@/components/AgentModal';
+import AgentChatDrawer from '@/components/AgentChatDrawer';
+import LiveMonitorFeed from '@/components/LiveMonitorFeed';
+import TaskBoard from '@/components/TaskBoard';
+import OAuthSubscriptionsModal from '@/components/OAuthSubscriptionsModal';
+import TelegramBotModal from '@/components/TelegramBotModal';
 import { supabase } from '@/lib/supabase';
+import { Agent, Department, Task, AgentActivityLog, UserSubscription } from '@/types';
+import { INITIAL_DEPARTMENTS, INITIAL_AGENTS, INITIAL_LOGS } from '@/lib/agents/initialData';
 
 export default function Home() {
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Navegación de pestañas
   const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity'>('overview');
-  
+
+  // Filtro por departamento (para Dashboard General, Estructura de Nodos y Agentes IA)
+  const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
+
+  // Estados de datos
+  const [departments, setDepartments] = useState<Department[]>(INITIAL_DEPARTMENTS);
+  const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
+  const [logs, setLogs] = useState<AgentActivityLog[]>(INITIAL_LOGS);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Estados de Suscripciones OAuth del Usuario
+  const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([
+    {
+      id: 'sub-gemini',
+      provider: 'gemini',
+      name: 'Google Gemini Pro / Advanced',
+      connected: false,
+    },
+    {
+      id: 'sub-openai',
+      provider: 'openai',
+      name: 'OpenAI (ChatGPT Pro / Plus)',
+      connected: false,
+    },
+    {
+      id: 'sub-claude',
+      provider: 'claude',
+      name: 'Anthropic Claude Pro',
+      connected: false,
+      tier: 'Claude Pro',
+    },
+  ]);
+
+  // Estados de Modales y Chat
+  const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
+  const [isOAuthModalOpen, setIsOAuthModalOpen] = useState(false);
+  const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
+  const [agentForTelegram, setAgentForTelegram] = useState<Agent | null>(null);
+  const [agentToEdit, setAgentToEdit] = useState<Agent | null>(null);
+  const [chatAgent, setChatAgent] = useState<Agent | null>(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+
   // Estados de Autenticación con Supabase
   const [session, setSession] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+
+  const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'facundod@iwebtecnology.com,valentind@iwebtecnology.com,tomasb@iwebtecnology.com')
+    .split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+  const isAdmin = Boolean(session?.user?.email && adminEmails.includes(session.user.email.toLowerCase()));
+
+  // Cargar agentes persistidos localmente si existen
+  useEffect(() => {
+    try {
+      // Remove legacy pre-multi-user storage so test agents and shared credentials cannot leak.
+      localStorage.removeItem('jetree_agents');
+      localStorage.removeItem('jetree_user_subscriptions');
+      const userKey = session?.user?.id || session?.user?.email || 'anonymous';
+      const savedAgents = localStorage.getItem(`jetree_agents:${userKey}`);
+      if (savedAgents) {
+        setAgents(JSON.parse(savedAgents));
+      }
+      const savedSubs = localStorage.getItem(`jetree_user_subscriptions:${userKey}`);
+      if (savedSubs) {
+        setSubscriptions(JSON.parse(savedSubs));
+      }
+
+      if (session) {
+        supabase.auth.getSession().then(async ({ data: { session: authSession } }) => {
+          const headers: Record<string, string> = authSession?.access_token ? { Authorization: `Bearer ${authSession.access_token}` } : {};
+          const [agentsResponse, departmentsResponse] = await Promise.all([
+            fetch('/api/agents', { headers }),
+            fetch('/api/departments', { headers }),
+          ]);
+          if (agentsResponse.ok) {
+            const payload = await agentsResponse.json();
+            setAgents((payload.agents || []).map((agent: any) => ({
+              ...agent,
+              departmentId: agent.department_id,
+              roleType: agent.role_type,
+              systemPrompt: agent.system_prompt,
+              subordinateIds: agent.subordinate_ids,
+              enabledPluginIds: agent.enabled_tool_ids,
+              createdAt: agent.created_at,
+            })));
+          }
+          if (departmentsResponse.ok) {
+            const payload = await departmentsResponse.json();
+            if (payload.departments?.length) setDepartments(payload.departments);
+          }
+        }).catch(error => console.warn('No se pudieron cargar los datos del workspace', error));
+      }
+    } catch (e) {
+      console.warn('No se pudieron leer los agentes locales', e);
+    }
+  }, [session?.user?.id, session?.user?.email]);
+
+  // Guardar agentes en localStorage cuando cambien
+  const saveAgentsState = (updated: Agent[]) => {
+    setAgents(updated);
+    try {
+      const userKey = session?.user?.id || session?.user?.email || 'anonymous';
+      localStorage.setItem(`jetree_agents:${userKey}`, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error guardando agentes', e);
+    }
+  };
+
+  // Alternar suscripción OAuth
+  const handleToggleSubscription = (provider: 'openai' | 'gemini' | 'claude') => {
+    const updated = subscriptions.map(s => {
+      if (s.provider === provider) {
+        const nextState = !s.connected;
+        return {
+          ...s,
+          connected: nextState,
+          connectedAt: nextState ? new Date().toISOString() : undefined,
+          userAccountEmail: nextState ? (session?.user?.email || 'usuario@iweb.com') : undefined,
+        };
+      }
+      return s;
+    });
+
+    setSubscriptions(updated);
+    try {
+      const userKey = session?.user?.id || session?.user?.email || 'anonymous';
+      localStorage.setItem(`jetree_user_subscriptions:${userKey}`, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error guardando suscripciones', e);
+    }
+
+    const provName = provider === 'openai' ? 'ChatGPT Pro' : provider === 'gemini' ? 'Gemini Pro' : 'Claude Pro';
+    addNewLog({
+      id: `log-oauth-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      type: 'manager_analysis',
+      message: `Suscripción OAuth de ${provName} ${updated.find(s => s.provider === provider)?.connected ? 'vinculada con éxito' : 'desconectada'}.`,
+    });
+  };
+
+  // Guardar configuración del bot de Telegram para un agente específico
+  const handleSaveTelegramBot = (agentId: string, botToken: string, botUsername: string) => {
+    const updated = agents.map(a => {
+      if (a.id === agentId) {
+        return {
+          ...a,
+          telegramBot: {
+            botToken,
+            botUsername,
+            isActive: true,
+            webhookUrl: `/api/webhook/telegram/${agentId}`,
+          },
+        };
+      }
+      return a;
+    });
+
+    saveAgentsState(updated);
+
+    const targetAg = agents.find(a => a.id === agentId);
+    addNewLog({
+      id: `log-tg-config-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      agentId,
+      agentName: targetAg?.name,
+      type: 'telegram_in',
+      message: `Bot de Telegram @${botUsername || 'AgenteBot'} vinculado exitosamente al agente ${targetAg?.name}.`,
+      details: `Token de BotFather activado. Escuchando en webhook /api/webhook/telegram/${agentId}`,
+    });
+  };
 
   // Verificar sesión activa al cargar
   useEffect(() => {
@@ -31,24 +206,73 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Cargar tareas cuando la sesión está activa
+  // Cargar tareas de Supabase y configurar escucha en tiempo real (Realtime)
   useEffect(() => {
     if (!session) return;
 
     async function fetchTasks() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('tasks')
           .select('*')
           .order('created_at', { ascending: false });
-        setTasks(data || []);
+
+        if (!error && data) {
+          const formattedTasks: Task[] = data.map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description,
+            departmentId: t.department_id,
+            assignedAgentId: t.assigned_agent_id,
+            status: t.status || 'pending',
+            sourceChannel: t.source_channel || (t.description?.includes('Telegram') ? 'telegram' : 'web'),
+            createdAt: t.created_at,
+          }));
+          setTasks(formattedTasks);
+        }
       } catch (err) {
-        console.error(err);
+        console.error('Error cargando tareas:', err);
       } finally {
         setLoading(false);
       }
     }
+
     fetchTasks();
+
+    // Suscripción Realtime a nuevas tareas (ej: entrantes desde Telegram Webhook)
+    const channel = supabase
+      .channel('tasks-realtime-feed')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'tasks' },
+        (payload: any) => {
+          const newTask = payload.new;
+          const formattedTask: Task = {
+            id: newTask.id,
+            title: newTask.title,
+            description: newTask.description,
+            departmentId: newTask.department_id,
+            status: newTask.status || 'pending',
+            sourceChannel: newTask.source_channel || 'telegram',
+            createdAt: newTask.created_at || new Date().toISOString(),
+          };
+
+          setTasks(prev => [formattedTask, ...prev]);
+
+          addNewLog({
+            id: `log-tg-${Date.now()}`,
+            timestamp: new Date().toISOString(),
+            type: 'telegram_in',
+            message: `Nueva tarea recibida desde Telegram: "${formattedTask.title}"`,
+            details: formattedTask.description,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [session]);
 
   // Manejar Login
@@ -73,40 +297,141 @@ export default function Home() {
     await supabase.auth.signOut();
   };
 
+  // Agregar nuevo log al monitoreo
+  const addNewLog = (newLog: AgentActivityLog) => {
+    setLogs(prev => [newLog, ...prev]);
+  };
+
+  // Guardar nuevo agente o editar existente
+  const handleSaveAgent = (savedAgent: Agent) => {
+    const exists = agents.some(a => a.id === savedAgent.id);
+    let updated: Agent[];
+    if (exists) {
+      updated = agents.map(a => (a.id === savedAgent.id ? savedAgent : a));
+    } else {
+      updated = [...agents, savedAgent];
+    }
+    saveAgentsState(updated);
+
+    supabase.auth.getSession().then(async ({ data: { session: authSession } }) => {
+      if (!authSession?.access_token) return;
+      const dbAgent = {
+        ...(exists ? { id: savedAgent.id } : {}),
+        department_id: savedAgent.departmentId,
+        name: savedAgent.name,
+        description: savedAgent.description,
+        role_type: savedAgent.roleType,
+        provider: savedAgent.provider === 'custom' ? 'openai' : savedAgent.provider,
+        model: savedAgent.model,
+        system_prompt: savedAgent.systemPrompt,
+        subordinate_ids: savedAgent.subordinateIds || [],
+        enabled_tool_ids: savedAgent.enabledPluginIds || [],
+        avatar: savedAgent.avatar,
+        status: savedAgent.status,
+      };
+      const response = await fetch('/api/agents', {
+        method: exists ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authSession.access_token}` },
+        body: JSON.stringify(dbAgent),
+      });
+      if (!response.ok) {
+        console.warn('No se pudo persistir el agente en Supabase', await response.text());
+      } else if (!exists) {
+        const saved = await response.json();
+        if (saved.agent?.id) {
+          const withServerId = updated.map(agent => agent.id === savedAgent.id ? { ...agent, id: saved.agent.id } : agent);
+          saveAgentsState(withServerId);
+        }
+      }
+    });
+
+    addNewLog({
+      id: `log-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      agentId: savedAgent.id,
+      agentName: savedAgent.name,
+      type: 'manager_analysis',
+      message: exists
+        ? `Configuración del agente ${savedAgent.name} actualizada.`
+        : `Nuevo agente ${savedAgent.name} (${savedAgent.roleType === 'manager' ? 'Manager / Orquestador' : 'Independiente'}) desplegado en el nodo.`,
+    });
+  };
+
+  const handleCreateDepartment = async () => {
+    const name = window.prompt('Nombre del nuevo departamento');
+    if (!name?.trim()) return;
+    const description = window.prompt('Descripción del departamento (opcional)') || '';
+    const { data: authData } = await supabase.auth.getSession();
+    const token = authData.session?.access_token;
+    if (!token) return;
+    const response = await fetch('/api/departments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name, description, icon: '🌳' }),
+    });
+    if (!response.ok) {
+      console.error('No se pudo crear el departamento', await response.text());
+      return;
+    }
+    const payload = await response.json();
+    if (payload.department) setDepartments(previous => [...previous, payload.department]);
+  };
+
+  // Actualizar estado de una tarea
+  const handleUpdateTaskStatus = async (taskId: string, newStatus: Task['status']) => {
+    setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: newStatus } : t)));
+    try {
+      await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+    } catch (e) {
+      console.warn('No se pudo persistir el estado de la tarea en BD', e);
+    }
+  };
+
+  // Abrir chat con un agente
+  const openChatWithAgent = (agent: Agent) => {
+    setChatAgent(agent);
+    setIsChatOpen(true);
+  };
+
+  // Abrir modal de Bot de Telegram para un agente
+  const openTelegramModalForAgent = (agent: Agent) => {
+    setAgentForTelegram(agent);
+    setIsTelegramModalOpen(true);
+  };
+
   // Obtener datos del perfil según el email logueado
   const getProfileData = () => {
     const userEmail = session?.user?.email?.toLowerCase() || '';
-    
-    // Si el email pertenece a Facu
     if (userEmail.includes('facu') || userEmail.includes('backend')) {
       return {
         name: 'Demarco Facundo',
         role: 'Co-fundador & Backend Developer',
-        initials: 'FD'
+        initials: 'FD',
       };
     }
-
-    // Si el email pertenece a Tomás
     if (userEmail.includes('tomas') || userEmail.includes('tommy') || userEmail.includes('frontend')) {
       return {
         name: 'Barajas Tomás',
         role: 'Frontend Developer',
-        initials: 'TB'
+        initials: 'TB',
       };
     }
-    
-    // Por defecto perfil de Valen
     return {
       name: 'Demarco Valentin',
       role: 'Co-fundador & UX/UI Designer',
-      initials: 'VD'
+      initials: 'VD',
     };
   };
 
   const userProfile = getProfileData();
 
+  // Filtrar agentes según el departamento seleccionado
+  const filteredAgents = selectedDepartmentFilter === 'all'
+    ? agents
+    : agents.filter(a => a.departmentId === selectedDepartmentFilter);
+
   // ----------------------------------------------------------------
-  // SI NO HAY SESIÓN: MOSTRAR PANTALLA DE LOGIN CORPORATIVA
+  // SI NO HAY SESIÓN: MOSTRAR PANTALLA DE LOGIN CORPORATIVA (IDÉNTICA)
   // ----------------------------------------------------------------
   if (!session) {
     return (
@@ -127,30 +452,34 @@ export default function Home() {
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Correo Electrónico</label>
-              <input 
-                type="email" 
+              <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+                Correo Electrónico
+              </label>
+              <input
+                type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={e => setEmail(e.target.value)}
                 placeholder="correo@iweb.com"
                 required
                 className="w-full bg-[#05070b] border border-cyan-950/80 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 transition-all"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">Contraseña</label>
-              <input 
-                type="password" 
+              <label className="block text-xs font-medium text-gray-400 mb-1.5 uppercase tracking-wider">
+                Contraseña
+              </label>
+              <input
+                type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
                 className="w-full bg-[#05070b] border border-cyan-950/80 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 transition-all"
               />
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={authLoading}
               className="w-full bg-cyan-500 hover:bg-cyan-400 text-black font-semibold py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/20 text-sm mt-2 disabled:opacity-50"
             >
@@ -169,101 +498,79 @@ export default function Home() {
   // ----------------------------------------------------------------
   // SI HAY SESIÓN: MOSTRAR EL PANEL PRINCIPAL CORPORATIVO
   // ----------------------------------------------------------------
+  const managersCount = agents.filter(a => a.roleType === 'manager').length;
+  const independentCount = agents.filter(a => a.roleType === 'independent').length;
+  const connectedOAuthCount = subscriptions.filter(s => s.connected).length;
+  const telegramBotsCount = agents.filter(a => a.telegramBot?.botToken).length;
+
   return (
     <div className="min-h-screen bg-[#05070b] text-gray-100 flex font-sans selection:bg-cyan-500 selection:text-black">
-      
-      {/* SIDEBAR CORPORATIVO */}
-      <aside className="w-72 bg-[#080c14] border-r border-cyan-950/40 flex flex-col justify-between hidden md:flex">
-        <div>
-          {/* Logo Brand */}
-          <div className="h-20 flex items-center px-6 border-b border-cyan-950/40 gap-3">
-            <div className="w-9 h-9 rounded-xl bg-cyan-950/30 border border-cyan-500/30 flex items-center justify-center overflow-hidden shadow-lg shadow-cyan-500/10">
-              <img src="/favicon.png" alt="Jetree Logo" className="w-full h-full object-cover" />
-            </div>
-            <div>
-              <span className="font-bold tracking-tight text-white text-lg">Jetree</span>
-              <span className="text-[10px] block uppercase tracking-widest text-cyan-400 font-medium">Node System</span>
-            </div>
-          </div>
 
-          {/* Menú de Navegación */}
-          <nav className="p-4 space-y-1.5">
-            <button 
-              onClick={() => setActiveTab('overview')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'overview' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/5' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'}`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-              Panel General
-            </button>
-            <button 
-              onClick={() => setActiveTab('departments')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'departments' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/5' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'}`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-              Estructura de Nodos
-            </button>
-            <button 
-              onClick={() => setActiveTab('agents')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'agents' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/5' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'}`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
-              Agentes IA
-            </button>
-            <button 
-              onClick={() => setActiveTab('activity')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === 'activity' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 shadow-sm shadow-cyan-500/5' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'}`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-              Webhook Telegram
-            </button>
-          </nav>
-        </div>
-
-        {/* Status Inferior Workspace y Botón Cerrar Sesión */}
-        <div className="p-4 border-t border-cyan-950/40 space-y-3">
-          <div className="bg-cyan-950/20 p-3 rounded-lg border border-cyan-900/40 flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></div>
-            <div className="text-xs truncate">
-              <p className="font-medium text-gray-200 truncate">{session.user.email}</p>
-              <p className="text-gray-500 text-[10px]">Autenticado en Supabase</p>
-            </div>
-          </div>
-          <button 
-            onClick={handleLogout}
-            className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs py-2 rounded-lg font-medium transition-all"
-          >
-            Cerrar Sesión
-          </button>
-        </div>
-      </aside>
+      {/* SIDEBAR CORPORATIVO MODULARIZADO */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        userEmail={session.user.email}
+        onLogout={handleLogout}
+      />
 
       {/* CONTENIDO PRINCIPAL */}
       <div className="flex-1 flex flex-col min-w-0">
-        
-        {/* Top Navbar con el perfil dinámico según quién inicie sesión */}
+
+        {/* Top Navbar */}
         <header className="h-20 bg-[#080c14]/80 backdrop-blur border-b border-cyan-950/40 px-8 flex items-center justify-between sticky top-0 z-20">
           <div>
             <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Centro de Operaciones</h2>
-            <p className="text-xs text-gray-500 mt-0.5">iWeb Enterprise Workspace</p>
+            <p className="text-xs text-gray-500 mt-0.5">iWeb Enterprise Workspace • Orquestación Multi-Agente & Telegram</p>
           </div>
 
-          {/* Perfil Dinámico */}
-          <div className="flex items-center gap-3 bg-[#0b101d] px-3.5 py-2 rounded-xl border border-cyan-950/60 shadow-inner">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-cyan-400 flex items-center justify-center text-black font-bold text-xs shadow-md">
-              {userProfile.initials}
-            </div>
-            <div className="text-left">
-              <p className="font-semibold text-white text-xs leading-tight">{userProfile.name}</p>
-              <p className="text-[10px] text-cyan-400 font-medium">{userProfile.role}</p>
+          <div className="flex items-center gap-3">
+            {/* Botón Gestión de Suscripciones OAuth */}
+            <button
+              onClick={() => setIsOAuthModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 text-purple-300 border border-purple-800/40 text-xs font-semibold transition-all shadow-sm"
+              title="Vincular suscripciones de ChatGPT Pro, Gemini Pro y Claude Pro"
+            >
+              <span>🔐</span>
+              <span className="hidden sm:inline">Suscripciones IA</span>
+              <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-200 font-mono">
+                {connectedOAuthCount}/3
+              </span>
+            </button>
+
+            {/* Botón Acción Rápida: Hablar con el Manager Principal */}
+            {agents.find(a => a.roleType === 'manager') && (
+              <button
+                onClick={() => {
+                  const firstManager = agents.find(a => a.roleType === 'manager');
+                  if (firstManager) openChatWithAgent(firstManager);
+                }}
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-semibold transition-all shadow-sm"
+              >
+                <span>🧠</span>
+                <span>Hablar con Manager</span>
+              </button>
+            )}
+
+            {/* Perfil Dinámico */}
+            <div className="flex items-center gap-3 bg-[#0b101d] px-3.5 py-2 rounded-xl border border-cyan-950/60 shadow-inner">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-cyan-600 to-cyan-400 flex items-center justify-center text-black font-bold text-xs shadow-md">
+                {userProfile.initials}
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-white text-xs leading-tight">{userProfile.name}</p>
+                <p className="text-[10px] text-cyan-400 font-medium">{userProfile.role}</p>
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Dashboard Viewport */}
-        <main className="p-8 space-y-8 max-w-7xl mx-auto w-full">
-          
+        {/* Viewport Principal */}
+        <main className="p-8 space-y-8 max-w-7xl mx-auto w-full flex-1">
+
           {/* Métricas Corporativas Rápidas */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
+
             <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl p-5 shadow-sm">
               <div className="flex justify-between items-start">
                 <div>
@@ -283,77 +590,293 @@ export default function Home() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Departamentos</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">2</h3>
+                  <h3 className="text-2xl font-bold text-white mt-1">{departments.length}</h3>
                 </div>
                 <div className="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
                 </div>
               </div>
-              <p className="text-xs text-gray-400 mt-4">Estructura ramificada</p>
+              <p className="text-xs text-gray-400 mt-4">Estructura jerárquica</p>
             </div>
 
             <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl p-5 shadow-sm">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Agentes Activos</p>
-                  <h3 className="text-2xl font-bold text-white mt-1">2</h3>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Managers / Orquestadores</p>
+                  <h3 className="text-2xl font-bold text-cyan-400 mt-1">{managersCount}</h3>
                 </div>
                 <div className="p-2.5 bg-cyan-500/10 text-cyan-400 rounded-lg border border-cyan-500/20">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                  <span className="text-base">👑</span>
                 </div>
               </div>
-              <p className="text-xs text-cyan-400 mt-4 font-medium">Gemini Pro & OpenAI</p>
+              <p className="text-xs text-cyan-400 mt-4 font-medium">Capacidad de Derivación</p>
             </div>
+
+            <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl p-5 shadow-sm">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wider">Bots de Telegram</p>
+                  <h3 className="text-2xl font-bold text-blue-400 mt-1">{telegramBotsCount}</h3>
+                </div>
+                <div className="p-2.5 bg-blue-500/10 text-blue-400 rounded-lg border border-blue-500/20">
+                  <span className="text-base">✈️</span>
+                </div>
+              </div>
+              <p className="text-xs text-blue-400 mt-4 font-medium flex items-center gap-1">
+                <span>Vía @BotFather por Agente</span>
+              </p>
+            </div>
+
           </div>
 
-          {/* Sección de Tareas */}
-          <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl shadow-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-cyan-950/40 flex justify-between items-center bg-[#080c14]/40">
-              <div>
-                <h3 className="text-base font-semibold text-white">Tareas Registradas</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Sincronización directa desde canal de Telegram</p>
-              </div>
-              <span className="text-xs bg-cyan-950/40 text-cyan-300 px-3 py-1 rounded-md border border-cyan-900/40 font-mono">
-                {tasks.length} ítems
-              </span>
-            </div>
-
-            <div className="p-6">
-              {loading ? (
-                <div className="py-8 text-center text-gray-500 text-sm">Cargando registros...</div>
-              ) : tasks.length === 0 ? (
-                <div className="text-center py-12 border border-dashed border-cyan-950/60 rounded-xl bg-cyan-950/5">
-                  <div className="w-12 h-12 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mx-auto text-xl mb-3">
-                    💬
+          {/* -------------------------------------------------------- */}
+          {/* PESTAÑA 1: PANEL GENERAL (OVERVIEW)                     */}
+          {/* -------------------------------------------------------- */}
+          {activeTab === 'overview' && (
+            <div className="space-y-8">
+              {/* Tablero Kanban de Tareas con Filtro por Departamento */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-white">Flujo Operativo de Tareas</h3>
+                    <p className="text-xs text-gray-400">Canal sincronizado con Telegram y tareas clasificadas por departamento</p>
                   </div>
-                  <h4 className="font-semibold text-gray-200">Sin tareas en el árbol</h4>
-                  <p className="text-xs text-gray-400 max-w-sm mx-auto mt-1">Envía una instrucción al Bot de Telegram para poblar este nodo de manera automática.</p>
+                  <span className="text-xs bg-cyan-950/40 text-cyan-300 px-3 py-1 rounded-md border border-cyan-900/40 font-mono">
+                    {tasks.length} tareas totales
+                  </span>
+                </div>
+
+                <TaskBoard
+                  tasks={tasks}
+                  departments={departments}
+                  selectedDepartmentId={selectedDepartmentFilter}
+                  onSelectDepartment={setSelectedDepartmentFilter}
+                  onUpdateStatus={handleUpdateTaskStatus}
+                />
+              </div>
+
+              {/* Árbol Jerárquico Resumido */}
+              <DepartmentTree
+                departments={departments}
+                agents={agents}
+                selectedDepartmentId={selectedDepartmentFilter}
+                onSelectDepartment={setSelectedDepartmentFilter}
+                onSelectAgent={openChatWithAgent}
+              />
+            </div>
+          )}
+
+          {/* -------------------------------------------------------- */}
+          {/* PESTAÑA 2: ESTRUCTURA DE NODOS (DEPARTMENTS)             */}
+          {/* -------------------------------------------------------- */}
+          {activeTab === 'departments' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Topología del Árbol Organizacional</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Visualiza departamentos, managers asignados y agentes bajo su mando o independientes
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCreateDepartment}
+                  className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-cyan-300 border border-cyan-900 text-xs transition-all"
+                >
+                  <span>+ Nuevo departamento</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAgentToEdit(null);
+                    setIsAgentModalOpen(true);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs transition-all shadow-lg shadow-cyan-500/20 flex items-center gap-1.5"
+                >
+                  <span>+</span>
+                  <span>Agregar Agente al Árbol</span>
+                </button>
+                </div>
+              </div>
+
+              <DepartmentTree
+                departments={departments}
+                agents={agents}
+                selectedDepartmentId={selectedDepartmentFilter}
+                onSelectDepartment={setSelectedDepartmentFilter}
+                onSelectAgent={openChatWithAgent}
+              />
+            </div>
+          )}
+
+          {/* -------------------------------------------------------- */}
+          {/* PESTAÑA 3: AGENTES IA (AGENTS)                           */}
+          {/* -------------------------------------------------------- */}
+          {activeTab === 'agents' && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-white">Gestión de Agentes de Inteligencia Artificial</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Crea agentes independientes o managers, activa plugins de ChatGPT/Claude/Gemini y bots de Telegram
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <button
+                    onClick={() => setIsOAuthModalOpen(true)}
+                    className="px-3.5 py-2.5 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 text-purple-300 border border-purple-800/40 text-xs font-semibold transition-all flex items-center gap-1.5"
+                  >
+                    <span>🔐</span>
+                    <span>Suscripciones OAuth</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setAgentToEdit(null);
+                      setIsAgentModalOpen(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs transition-all shadow-lg shadow-cyan-500/20 flex items-center gap-2"
+                  >
+                    <span className="text-base font-bold">+</span>
+                    <span>Crear Nuevo Agente</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Barra de Filtro de Departamento para Agentes IA */}
+              <div className="p-3 bg-[#0b101d] border border-cyan-950/60 rounded-xl flex items-center gap-2 overflow-x-auto">
+                <span className="text-xs text-gray-400 font-mono pl-1">Filtrar por Departamento:</span>
+                <button
+                  onClick={() => setSelectedDepartmentFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 ${
+                    selectedDepartmentFilter === 'all'
+                      ? 'bg-cyan-500 text-black font-semibold shadow-sm shadow-cyan-500/20'
+                      : 'bg-[#05070b] text-gray-400 border border-cyan-950 hover:text-white'
+                  }`}
+                >
+                  Todos ({agents.length})
+                </button>
+                {departments.map(dept => {
+                  const count = agents.filter(a => a.departmentId === dept.id).length;
+                  return (
+                    <button
+                      key={dept.id}
+                      onClick={() => setSelectedDepartmentFilter(dept.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all shrink-0 flex items-center gap-1.5 ${
+                        selectedDepartmentFilter === dept.id
+                          ? 'bg-cyan-500 text-black font-semibold shadow-sm shadow-cyan-500/20'
+                          : 'bg-[#05070b] text-gray-400 border border-cyan-950 hover:text-white'
+                      }`}
+                    >
+                      <span>{dept.icon}</span>
+                      <span>{dept.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/40 text-gray-300 font-mono">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Grid de Agentes Filtrados */}
+              {filteredAgents.length === 0 ? (
+                <div className="py-12 border border-dashed border-cyan-950/60 rounded-xl text-center text-xs text-gray-500">
+                  No se encontraron agentes en el departamento seleccionado.
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {tasks.map((task: any) => (
-                    <div key={task.id} className="bg-[#05070b] border border-cyan-950/50 p-4 rounded-xl flex items-center justify-between hover:border-cyan-800/60 transition-all">
-                      <div className="space-y-1">
-                        <h4 className="font-medium text-gray-100 text-sm">{task.title}</h4>
-                        <p className="text-xs text-gray-400">{task.description || 'Sin descripción adicional'}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs px-3 py-1 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium uppercase tracking-wider">
-                          {task.status || 'Pendiente'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {filteredAgents.map(agent => {
+                    const subordinates = agents.filter(a => agent.subordinateIds?.includes(a.id));
+                    return (
+                      <AgentCard
+                        key={agent.id}
+                        agent={agent}
+                        subordinates={subordinates}
+                        onChat={openChatWithAgent}
+                        onEdit={ag => {
+                          setAgentToEdit(ag);
+                          setIsAgentModalOpen(true);
+                        }}
+                        onConfigureTelegram={ag => openTelegramModalForAgent(ag)}
+                      />
+                    );
+                  })}
                 </div>
               )}
             </div>
-          </div>
+          )}
 
-          {/* Componente del Árbol de Departamentos */}
-          <DepartmentTree />
+          {/* -------------------------------------------------------- */}
+          {/* PESTAÑA 4: MONITOREO EN VIVO & TELEGRAM (ACTIVITY)      */}
+          {/* -------------------------------------------------------- */}
+          {activeTab === 'activity' && (
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-bold text-white">Centro de Mando & Monitoreo en Tiempo Real</h3>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Visualiza los mensajes entrantes de Telegram, pensamientos de los Managers, delegaciones y outputs de especialistas
+                </p>
+              </div>
+
+              <LiveMonitorFeed
+                logs={logs}
+                onClearLogs={() => setLogs([])}
+              />
+            </div>
+          )}
 
         </main>
       </div>
+
+      {/* MODAL PARA CREAR / EDITAR AGENTES */}
+      <AgentModal
+        isOpen={isAgentModalOpen}
+        onClose={() => {
+          setIsAgentModalOpen(false);
+          setAgentToEdit(null);
+        }}
+        onSave={handleSaveAgent}
+        departments={departments}
+        existingAgents={agents}
+        userSubscriptions={subscriptions}
+        agentToEdit={agentToEdit}
+        onOpenSubscriptions={() => {
+          setIsAgentModalOpen(false);
+          setIsOAuthModalOpen(true);
+        }}
+      />
+
+      {/* MODAL DE SUSCRIPCIONES OAUTH */}
+      <OAuthSubscriptionsModal
+        isOpen={isOAuthModalOpen}
+        onClose={() => setIsOAuthModalOpen(false)}
+        userEmail={session.user.email}
+        subscriptions={subscriptions}
+        onToggleSubscription={handleToggleSubscription}
+      />
+
+      {/* MODAL DE VINCULACIÓN CON BOTFATHER DE TELEGRAM */}
+      <TelegramBotModal
+        isOpen={isTelegramModalOpen}
+        agent={agentForTelegram}
+        onClose={() => {
+          setIsTelegramModalOpen(false);
+          setAgentForTelegram(null);
+        }}
+        onSaveBotConfig={handleSaveTelegramBot}
+      />
+
+      {/* DRAWER / CHAT CON CUALQUIER AGENTE O MANAGER */}
+      <AgentChatDrawer
+        isOpen={isChatOpen}
+        agent={chatAgent}
+        onClose={() => {
+          setIsChatOpen(false);
+          setChatAgent(null);
+        }}
+        availableAgents={agents}
+        onNewLog={addNewLog}
+      />
 
     </div>
   );

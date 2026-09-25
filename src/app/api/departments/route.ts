@@ -4,9 +4,9 @@ import { requireUser } from '@/lib/server/auth';
 export async function GET(request: Request) {
   try {
     const { client } = await requireUser(request);
-    const { data, error } = await client.from('agents').select('*').order('created_at', { ascending: true });
+    const { data, error } = await client.from('departments').select('*').order('created_at', { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ agents: data || [] });
+    return NextResponse.json({ departments: data || [] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message === 'AUTH_REQUIRED' ? 'Autenticación requerida' : 'Error interno' }, { status: error.message === 'AUTH_REQUIRED' ? 401 : 500 });
   }
@@ -16,12 +16,12 @@ export async function POST(request: Request) {
   try {
     const { client, user } = await requireUser(request);
     const body = await request.json();
-    const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar'];
-    const payload = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)));
-    if (!payload.department_id || !payload.name || !payload.provider || !payload.model) return NextResponse.json({ error: 'department_id, name, provider y model son obligatorios' }, { status: 400 });
-    const { data, error } = await client.from('agents').insert({ ...payload, created_by: user.id }).select().single();
+    if (!body.name?.trim()) return NextResponse.json({ error: 'name es obligatorio' }, { status: 400 });
+    const { data, error } = await client.from('departments').insert({
+      name: body.name.trim(), description: body.description?.trim() || '', icon: body.icon || '🌳', created_by: user.id,
+    }).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ agent: data }, { status: 201 });
+    return NextResponse.json({ department: data }, { status: 201 });
   } catch (error: any) {
     return NextResponse.json({ error: error.message === 'AUTH_REQUIRED' ? 'Autenticación requerida' : 'Error interno' }, { status: error.message === 'AUTH_REQUIRED' ? 401 : 500 });
   }
@@ -32,12 +32,15 @@ export async function PATCH(request: Request) {
     const { client } = await requireUser(request);
     const body = await request.json();
     if (!body.id) return NextResponse.json({ error: 'id es obligatorio' }, { status: 400 });
-    const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar', 'status'];
-    const payload = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)));
-    delete (payload as any).id;
-    const { data, error } = await client.from('agents').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', body.id).select().single();
+    const payload = Object.fromEntries(
+      Object.entries(body)
+        .filter(([key]) => ['name', 'description', 'icon'].includes(key))
+        .map(([key, value]) => [key, key === 'name' || key === 'description' ? String(value || '').trim() : value])
+    );
+    if (payload.name !== undefined && !(payload.name as string)) return NextResponse.json({ error: 'name es obligatorio' }, { status: 400 });
+    const { data, error } = await client.from('departments').update(payload).eq('id', body.id).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-    return NextResponse.json({ agent: data });
+    return NextResponse.json({ department: data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message === 'AUTH_REQUIRED' ? 'Autenticación requerida' : 'Error interno' }, { status: error.message === 'AUTH_REQUIRED' ? 401 : 500 });
   }
@@ -48,7 +51,7 @@ export async function DELETE(request: Request) {
     const { client } = await requireUser(request);
     const id = new URL(request.url).searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id es obligatorio' }, { status: 400 });
-    const { error } = await client.from('agents').delete().eq('id', id);
+    const { error } = await client.from('departments').delete().eq('id', id);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (error: any) {
