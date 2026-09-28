@@ -37,7 +37,6 @@ export type Agent = {
   provider: AIProvider;
   model: string;                   // 'gpt-4o', 'gemini-2.5-flash', 'claude-3-5-sonnet-20241022', etc.
   systemPrompt: string;
-  customApiKey?: string;           // Opcional para API Key externa
   telegramBot?: TelegramBotConfig; // Configuración de Bot de Telegram individual
   enabledPluginIds?: string[];     // Plugins/Skills activas para este agente
   status: 'idle' | 'working' | 'offline';
@@ -47,12 +46,12 @@ export type Agent = {
 
 export type UserSubscription = {
   id: string;
-  provider: 'openai' | 'gemini' | 'claude';
-  name: string;                    // ej. "ChatGPT Pro", "Gemini Advanced / Pro", "Claude Pro / Team"
+  provider: 'openai' | 'gemini' | 'claude' | 'custom';
+  name: string;
   connected: boolean;
   userAccountEmail?: string;
   connectedAt?: string;
-  tier?: string;                   // ej. 'Pro', 'Ultra', 'Max'
+  tier?: string;
 };
 
 export type Task = {

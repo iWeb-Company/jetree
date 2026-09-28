@@ -10,6 +10,14 @@ export function getServerSupabase(accessToken?: string) {
   });
 }
 
+export function getServiceSupabase() {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceRoleKey) throw new Error('SERVER_CONFIGURATION_ERROR');
+  return createClient(url, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
 export async function requireUser(request: Request): Promise<{ client: ReturnType<typeof getServerSupabase>; user: User }> {
   const header = request.headers.get('authorization');
   const token = header?.startsWith('Bearer ') ? header.slice(7) : undefined;

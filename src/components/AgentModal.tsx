@@ -35,7 +35,6 @@ export default function AgentModal({
     agentToEdit?.systemPrompt || 'Eres un asistente especialista en...'
   );
   const [avatar, setAvatar] = useState(agentToEdit?.avatar || (roleType === 'manager' ? '👨‍💼' : '🤖'));
-  const [customApiKey, setCustomApiKey] = useState(agentToEdit?.customApiKey || '');
   const [selectedSubordinates, setSelectedSubordinates] = useState<string[]>(
     agentToEdit?.subordinateIds || []
   );
@@ -64,7 +63,7 @@ export default function AgentModal({
   if (!isOpen) return null;
 
   // Verificar suscripción conectada
-  const isSubscribed = (prov: 'openai' | 'gemini' | 'claude') => {
+  const isSubscribed = (prov: AIProvider) => {
     return userSubscriptions.some(s => s.provider === prov && s.connected);
   };
 
@@ -86,9 +85,7 @@ export default function AgentModal({
           { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Velocidad & Eficiencia)' },
         ];
       case 'custom':
-        return [
-          { value: 'custom-model', label: 'Modelo Externo / Endpoint Personalizado' },
-        ];
+        return [{ value: 'custom-model', label: 'Escribí el ID del modelo de OpenRouter abajo' }];
     }
   };
 
@@ -126,7 +123,7 @@ export default function AgentModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || (provider === 'custom' && (!model.trim() || model === 'custom-model'))) return;
 
     const newAgent: Agent = {
       id: agentToEdit?.id || `agent-${Date.now()}`,
@@ -138,7 +135,6 @@ export default function AgentModal({
       provider,
       model,
       systemPrompt: systemPrompt.trim(),
-      customApiKey: customApiKey.trim() || undefined,
       enabledPluginIds,
       telegramBot: agentToEdit?.telegramBot,
       status: 'idle',
@@ -308,7 +304,7 @@ export default function AgentModal({
                 </div>
               )}
 
-              {/* Proveedor de IA con Suscripciones OAuth */}
+              {/* Proveedor de IA */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider">
@@ -321,7 +317,7 @@ export default function AgentModal({
                       className="text-[11px] text-cyan-400 hover:underline flex items-center gap-1"
                     >
                       <span>🔐</span>
-                      <span>Suscripciones OAuth</span>
+                      <span>Gestionar conexiones</span>
                     </button>
                   )}
                 </div>
@@ -338,7 +334,7 @@ export default function AgentModal({
                   >
                     <span className="font-semibold text-white flex items-center gap-1">✨ Gemini Pro</span>
                     <span className={`text-[9px] mt-1 font-mono ${isSubscribed('gemini') ? 'text-cyan-400' : 'text-gray-500'}`}>
-                      {isSubscribed('gemini') ? '● OAuth Activo' : 'Cuenta Default'}
+                      {isSubscribed('gemini') ? '● API configurada' : 'Configurar API'}
                     </span>
                   </button>
 
@@ -353,7 +349,7 @@ export default function AgentModal({
                   >
                     <span className="font-semibold text-white flex items-center gap-1">🟢 OpenAI</span>
                     <span className={`text-[9px] mt-1 font-mono ${isSubscribed('openai') ? 'text-emerald-400' : 'text-gray-500'}`}>
-                      {isSubscribed('openai') ? '● OAuth Pro' : 'Cuenta Default'}
+                      {isSubscribed('openai') ? '● API configurada' : 'Configurar API'}
                     </span>
                   </button>
 
@@ -368,7 +364,7 @@ export default function AgentModal({
                   >
                     <span className="font-semibold text-white flex items-center gap-1">🟣 Claude Pro</span>
                     <span className={`text-[9px] mt-1 font-mono ${isSubscribed('claude') ? 'text-purple-400' : 'text-gray-500'}`}>
-                      {isSubscribed('claude') ? '● OAuth Activo' : 'Cuenta Default'}
+                      {isSubscribed('claude') ? '● API configurada' : 'Configurar API'}
                     </span>
                   </button>
 
@@ -381,8 +377,10 @@ export default function AgentModal({
                         : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
                     }`}
                   >
-                    <span className="font-semibold text-white flex items-center gap-1">🔑 API Key</span>
-                    <span className="text-[9px] mt-1 font-mono text-amber-400">Custom Key</span>
+                    <span className="font-semibold text-white flex items-center gap-1">🔑 OpenRouter</span>
+                    <span className={`text-[9px] mt-1 font-mono ${isSubscribed('custom') ? 'text-amber-400' : 'text-gray-500'}`}>
+                      {isSubscribed('custom') ? '● OpenRouter configurado' : 'Configurar OpenRouter'}
+                    </span>
                   </button>
                 </div>
               </div>
@@ -392,30 +390,25 @@ export default function AgentModal({
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                   Modelo Específico
                 </label>
-                <select
-                  value={model}
-                  onChange={e => setModel(e.target.value)}
-                  className="w-full bg-[#05070b] border border-cyan-950 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all font-mono"
-                >
-                  {getModelOptions(provider).map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Campo Opcional: API Key Externa */}
-              <div className="p-3.5 bg-[#05070b] border border-cyan-950 rounded-xl space-y-1.5">
-                <label className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <span>🔑</span>
-                  <span>API Key Externa (Opcional)</span>
-                </label>
-                <input
-                  type="password"
-                  value={customApiKey}
-                  onChange={e => setCustomApiKey(e.target.value)}
-                  placeholder="sk-ant-... / sk-proj-... / AIzaSy..."
-                  className="w-full bg-[#080c14] border border-cyan-950/80 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 font-mono transition-all"
-                />
+                {provider === 'custom' ? (
+                  <input
+                    required
+                    value={model === 'custom-model' ? '' : model}
+                    onChange={event => setModel(event.target.value)}
+                    placeholder="ej. deepseek/deepseek-chat-v3.1"
+                    className="w-full bg-[#05070b] border border-cyan-950 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 transition-all font-mono"
+                  />
+                ) : (
+                  <select
+                    value={model}
+                    onChange={e => setModel(e.target.value)}
+                    className="w-full bg-[#05070b] border border-cyan-950 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all font-mono"
+                  >
+                    {getModelOptions(provider).map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Descripción */}

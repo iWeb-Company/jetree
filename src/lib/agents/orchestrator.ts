@@ -1,5 +1,5 @@
 import { Agent, AgentActivityLog } from '@/types';
-import { analyzeWithChatGPT } from '@/lib/openai';
+import { analyzeWithChatGPT, analyzeWithOpenRouter } from '@/lib/openai';
 import { analyzeWithGemini } from '@/lib/gemini';
 import { analyzeWithClaude } from '@/lib/claude';
 import { ALL_CHATGPT_WORK_PLUGINS } from '@/lib/agents/plugins';
@@ -29,28 +29,28 @@ Si el usuario te solicita una acción que dependa de estos plugins (ej. revisar 
 }
 
 // Función auxiliar para invocar el proveedor de IA correspondiente
-async function callAIProvider(agent: Agent, prompt: string): Promise<string> {
+async function callAIProvider(agent: Agent, prompt: string, apiKeys: Record<string, string>): Promise<string> {
   if (agent.provider === 'claude') {
-    return (await analyzeWithClaude(prompt, agent.customApiKey, agent.model)) || 'Sin respuesta de Claude.';
+    return (await analyzeWithClaude(prompt, apiKeys.claude, agent.model)) || 'Sin respuesta de Claude.';
   }
   if (agent.provider === 'openai') {
-    return (await analyzeWithChatGPT(prompt, agent.customApiKey, agent.model)) || 'Sin respuesta de OpenAI.';
+    return (await analyzeWithChatGPT(prompt, apiKeys.openai, agent.model)) || 'Sin respuesta de OpenAI.';
   }
   if (agent.provider === 'gemini') {
-    return (await analyzeWithGemini(prompt, agent.customApiKey, agent.model)) || 'Sin respuesta de Gemini.';
+    return (await analyzeWithGemini(prompt, apiKeys.gemini, agent.model)) || 'Sin respuesta de Gemini.';
   }
-  // Custom / Fallback
-  if (agent.customApiKey) {
-    return (await analyzeWithChatGPT(prompt, agent.customApiKey, agent.model)) || 'Respuesta generada con API Externa.';
+  if (agent.provider === 'custom') {
+    return (await analyzeWithOpenRouter(prompt, apiKeys.custom, agent.model)) || 'Sin respuesta del proveedor externo.';
   }
-  return (await analyzeWithGemini(prompt, undefined, agent.model)) || 'Sin respuesta del modelo.';
+  throw new Error('UNSUPPORTED_PROVIDER');
 }
 
 export async function executeAgentChat(
   agent: Agent,
   userMessage: string,
   availableAgents: Agent[],
-  chatHistory: { role: 'user' | 'assistant'; content: string }[] = []
+  chatHistory: { role: 'user' | 'assistant'; content: string }[] = [],
+  apiKeys: Record<string, string> = {},
 ): Promise<ExecutionResult> {
   const logs: AgentActivityLog[] = [];
   const now = () => new Date().toISOString();
@@ -80,9 +80,9 @@ Por favor responde directamente aplicando tu especialidad.`;
 
     let responseText = '';
     try {
-      responseText = await callAIProvider(agent, prompt);
-    } catch (err: any) {
-      responseText = `Error al ejecutar con ${agent.provider}: ${err.message}`;
+      responseText = await callAIProvider(agent, prompt, apiKeys);
+    } catch {
+      throw new Error('PROVIDER_EXECUTION_FAILED');
     }
 
     logs.push({
@@ -142,10 +142,9 @@ Responde ÚNICAMENTE en formato JSON válido con la siguiente estructura (sin bl
 
   let managerRaw = '';
   try {
-    managerRaw = await callAIProvider(agent, managerPrompt);
-  } catch (err: any) {
-    console.error('Error en Manager:', err);
-    managerRaw = JSON.stringify({ decision: 'direct', directResponse: `Error comunicando con el Manager: ${err.message}` });
+    managerRaw = await callAIProvider(agent, managerPrompt, apiKeys);
+  } catch {
+    throw new Error('PROVIDER_EXECUTION_FAILED');
   }
 
   // Limpiar posible formato markdown en el JSON
@@ -214,9 +213,9 @@ Por favor desarrolla tu entrega técnica con excelencia.`;
 
   let specialistOutput = '';
   try {
-    specialistOutput = await callAIProvider(specialist, specialistPrompt);
-  } catch (err: any) {
-    specialistOutput = `Error ejecutando especialista: ${err.message}`;
+    specialistOutput = await callAIProvider(specialist, specialistPrompt, apiKeys);
+  } catch {
+    throw new Error('PROVIDER_EXECUTION_FAILED');
   }
 
   logs.push({
