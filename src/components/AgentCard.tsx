@@ -8,6 +8,7 @@ interface AgentCardProps {
   subordinates?: Agent[];
   onChat: (agent: Agent) => void;
   onEdit?: (agent: Agent) => void;
+  onDelete?: (agent: Agent) => void;
   onConfigureTelegram?: (agent: Agent) => void;
 }
 
@@ -16,6 +17,7 @@ export default function AgentCard({
   subordinates = [],
   onChat,
   onEdit,
+  onDelete,
   onConfigureTelegram,
 }: AgentCardProps) {
   const isManager = agent.roleType === 'manager';
@@ -171,6 +173,16 @@ export default function AgentCard({
               title="Editar configuración"
             >
               ⚙️
+            </button>
+          )}
+
+          {onDelete && (
+            <button
+              onClick={() => onDelete(agent)}
+              className="rounded-lg border border-red-950 bg-red-950/20 p-1.5 text-xs text-red-300 transition-all hover:border-red-800 hover:bg-red-950/40"
+              title="Archivar agente"
+            >
+              🗃️
             </button>
           )}
 

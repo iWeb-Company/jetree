@@ -27,8 +27,7 @@ export async function POST(
     const userText = message.text.trim();
     const fromUser = message.from?.username || message.from?.first_name || 'Usuario';
 
-    // Obtener configuración del agente: desde localStorage/Supabase o agentes iniciales
-    // Intentar buscar el agente en memoria inicial o fallback
+    // Telegram aún usa configuración de fase 6; los agentes de prueba no son válidos aquí.
     let targetAgent: Agent | undefined = INITIAL_AGENTS.find(a => a.id === agentId);
 
     // Si no está en iniciales, crear un mock basado en el ID

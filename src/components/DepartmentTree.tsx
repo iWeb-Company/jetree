@@ -9,6 +9,11 @@ interface DepartmentTreeProps {
   selectedDepartmentId?: string;
   onSelectDepartment?: (deptId: string) => void;
   onSelectAgent?: (agent: Agent) => void;
+  currentUserId?: string;
+  isAdmin?: boolean;
+  onEditDepartment?: (department: Department) => void;
+  onDeleteDepartment?: (department: Department) => void;
+  onManageMembers?: (department: Department) => void;
 }
 
 export default function DepartmentTree({
@@ -17,6 +22,11 @@ export default function DepartmentTree({
   selectedDepartmentId = 'all',
   onSelectDepartment,
   onSelectAgent,
+  currentUserId,
+  isAdmin = false,
+  onEditDepartment,
+  onDeleteDepartment,
+  onManageMembers,
 }: DepartmentTreeProps) {
   // Filtrar departamentos según la selección
   const filteredDepartments = selectedDepartmentId === 'all'
@@ -93,6 +103,25 @@ export default function DepartmentTree({
                     <span className="text-xs px-3 py-1 rounded-full bg-cyan-950/30 text-cyan-300 border border-cyan-900/50 font-medium hidden sm:inline-block">
                       {dept.lead}
                     </span>
+                  )}
+                  {(isAdmin || dept.created_by === currentUserId) && (
+                    <div className="flex items-center gap-1">
+                      {isAdmin && onManageMembers && (
+                        <button onClick={() => onManageMembers(dept)} className="rounded-lg border border-cyan-950 px-2 py-1 text-[10px] text-cyan-300 hover:border-cyan-700">
+                          Miembros
+                        </button>
+                      )}
+                      {onEditDepartment && (
+                        <button onClick={() => onEditDepartment(dept)} className="rounded-lg border border-gray-800 px-2 py-1 text-[10px] text-gray-300 hover:text-white">
+                          Editar
+                        </button>
+                      )}
+                      {onDeleteDepartment && (
+                        <button onClick={() => onDeleteDepartment(dept)} className="rounded-lg border border-red-950 px-2 py-1 text-[10px] text-red-300 hover:border-red-800">
+                          Archivar
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

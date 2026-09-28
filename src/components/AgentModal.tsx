@@ -7,7 +7,7 @@ import { ALL_CHATGPT_WORK_PLUGINS, PLUGIN_CATEGORIES, PluginCategory } from '@/l
 interface AgentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (agent: Agent) => void;
+  onSave: (agent: Agent) => Promise<void> | void;
   departments: Department[];
   existingAgents: Agent[];
   userSubscriptions: UserSubscription[];
@@ -48,6 +48,8 @@ export default function AgentModal({
   // Filtros del explorador de Plugins
   const [pluginCategoryFilter, setPluginCategoryFilter] = useState<string>('all');
   const [pluginSearchQuery, setPluginSearchQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // Filtrado reactivo de plugins según categoría y búsqueda
   const filteredPlugins = useMemo(() => {
@@ -121,7 +123,7 @@ export default function AgentModal({
     setEnabledPluginIds([]);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || (provider === 'custom' && (!model.trim() || model === 'custom-model'))) return;
 
@@ -142,8 +144,16 @@ export default function AgentModal({
       createdAt: agentToEdit?.createdAt || new Date().toISOString(),
     };
 
-    onSave(newAgent);
-    onClose();
+    setSaving(true);
+    setSaveError('');
+    try {
+      await onSave(newAgent);
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'No se pudo guardar el agente.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const availablePotentialSubordinates = existingAgents.filter(
@@ -198,6 +208,8 @@ export default function AgentModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {saveError && <p role="alert" className="rounded-lg border border-red-900 bg-red-950/40 p-3 text-xs text-red-300">{saveError}</p>}
+          {departments.length === 0 && <p className="rounded-lg border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">Creá o asignate a un departamento antes de guardar agentes.</p>}
           
           {modalTab === 'general' ? (
             <>
@@ -594,9 +606,10 @@ export default function AgentModal({
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs transition-all shadow-lg shadow-cyan-500/20"
+                disabled={saving || departments.length === 0}
+                className="px-5 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50"
               >
-                {agentToEdit ? 'Guardar Cambios' : 'Crear y Activar Agente'}
+                {saving ? 'Guardando…' : agentToEdit ? 'Guardar Cambios' : 'Crear y Activar Agente'}
               </button>
             </div>
           </div>

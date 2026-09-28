@@ -2,6 +2,8 @@ export type Department = {
   id: string;
   name: string;
   description: string;
+  created_by?: string;
+  deleted_at?: string | null;
   lead?: string;
   icon?: string;
 };
@@ -42,6 +44,8 @@ export type Agent = {
   status: 'idle' | 'working' | 'offline';
   avatar?: string;
   createdAt?: string;
+  createdBy?: string;
+  deletedAt?: string | null;
 };
 
 export type UserSubscription = {
