@@ -10,9 +10,44 @@ import LiveMonitorFeed from '@/components/LiveMonitorFeed';
 import TaskBoard from '@/components/TaskBoard';
 import OAuthSubscriptionsModal from '@/components/OAuthSubscriptionsModal';
 import TelegramBotModal from '@/components/TelegramBotModal';
+import DepartmentMembersModal from '@/components/DepartmentMembersModal';
+import ArchivedItemsModal from '@/components/ArchivedItemsModal';
 import { supabase } from '@/lib/supabase';
 import { Agent, Department, Task, AgentActivityLog, UserSubscription } from '@/types';
-import { INITIAL_DEPARTMENTS, INITIAL_AGENTS, INITIAL_LOGS } from '@/lib/agents/initialData';
+
+function mapAgentRow(row: any): Agent {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || '',
+    departmentId: row.department_id,
+    roleType: row.role_type,
+    subordinateIds: row.subordinate_ids || [],
+    provider: row.provider,
+    model: row.model,
+    systemPrompt: row.system_prompt || '',
+    enabledPluginIds: row.enabled_tool_ids || [],
+    status: row.status || 'idle',
+    avatar: row.avatar || undefined,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+    deletedAt: row.deleted_at,
+  };
+}
+
+function mapTaskRow(row: any): Task {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description || '',
+    departmentId: row.department_id || undefined,
+    assignedAgentId: row.assigned_agent_id || undefined,
+    status: row.status || 'pending',
+    sourceChannel: row.source_channel || 'web',
+    result: row.result || undefined,
+    createdAt: row.created_at,
+  };
+}
 
 export default function Home() {
   // Navegación de pestañas
@@ -22,11 +57,12 @@ export default function Home() {
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
 
   // Estados de datos
-  const [departments, setDepartments] = useState<Department[]>(INITIAL_DEPARTMENTS);
-  const [agents, setAgents] = useState<Agent[]>(INITIAL_AGENTS);
-  const [logs, setLogs] = useState<AgentActivityLog[]>(INITIAL_LOGS);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [logs, setLogs] = useState<AgentActivityLog[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [workspaceError, setWorkspaceError] = useState('');
 
   // Conexiones de proveedor API propias del usuario (solo estado, nunca claves).
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([
@@ -63,6 +99,8 @@ export default function Home() {
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [agentForTelegram, setAgentForTelegram] = useState<Agent | null>(null);
   const [agentToEdit, setAgentToEdit] = useState<Agent | null>(null);
+  const [departmentForMembers, setDepartmentForMembers] = useState<Department | null>(null);
+  const [isArchivedItemsOpen, setIsArchivedItemsOpen] = useState(false);
   const [chatAgent, setChatAgent] = useState<Agent | null>(null);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
@@ -77,78 +115,108 @@ export default function Home() {
     .split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
   const isAdmin = Boolean(session?.user?.email && adminEmails.includes(session.user.email.toLowerCase()));
 
-  // Cargar agentes persistidos localmente si existen
+  // Cargar el workspace del usuario desde Supabase; no se conserva estado de negocio en el navegador.
   useEffect(() => {
-    try {
-      // Remove legacy pre-multi-user storage so test agents and shared credentials cannot leak.
-      localStorage.removeItem('jetree_agents');
-      localStorage.removeItem('jetree_user_subscriptions');
-      const userKey = session?.user?.id || session?.user?.email || 'anonymous';
-      const savedAgents = localStorage.getItem(`jetree_agents:${userKey}`);
-      if (savedAgents) {
-        const parsedAgents = JSON.parse(savedAgents);
-        const safeAgents = Array.isArray(parsedAgents) ? parsedAgents.map((agent: Agent) => {
-          const { customApiKey: _legacyKey, ...safeAgent } = agent as Agent & { customApiKey?: string };
-          return safeAgent;
-        }) : [];
-        setAgents(safeAgents);
-        localStorage.setItem(`jetree_agents:${userKey}`, JSON.stringify(safeAgents));
-      }
-
-      if (session) {
-        supabase.auth.getSession().then(async ({ data: { session: authSession } }) => {
-          const headers: Record<string, string> = authSession?.access_token ? { Authorization: `Bearer ${authSession.access_token}` } : {};
-          const [agentsResponse, departmentsResponse, connectionsResponse] = await Promise.all([
-            fetch('/api/agents', { headers }),
-            fetch('/api/departments', { headers }),
-            fetch('/api/provider-connections', { headers }),
-          ]);
-          if (agentsResponse.ok) {
-            const payload = await agentsResponse.json();
-            setAgents((payload.agents || []).map((agent: any) => ({
-              ...agent,
-              departmentId: agent.department_id,
-              roleType: agent.role_type,
-              systemPrompt: agent.system_prompt,
-              subordinateIds: agent.subordinate_ids,
-              enabledPluginIds: agent.enabled_tool_ids,
-              createdAt: agent.created_at,
-            })));
-          }
-          if (departmentsResponse.ok) {
-            const payload = await departmentsResponse.json();
-            if (payload.departments?.length) setDepartments(payload.departments);
-          }
-          if (connectionsResponse.ok) {
-            const payload = await connectionsResponse.json();
-            const connections = Array.isArray(payload.connections) ? payload.connections : [];
-            setSubscriptions(current => current.map(item => {
-              const connection = connections.find((entry: any) => entry.provider === item.provider);
-              return {
-                ...item,
-                connected: connection?.status === 'configured',
-                connectedAt: connection?.connected_at,
-                tier: connection?.status === 'configured' ? 'API propia' : undefined,
-              };
-            }));
-          }
-        }).catch(error => console.warn('No se pudieron cargar los datos del workspace', error));
-      } else {
+    let active = true;
+    const loadWorkspace = async () => {
+      if (!session?.user?.id) {
+        setDepartments([]);
+        setAgents([]);
+        setTasks([]);
+        setLogs([]);
         setSubscriptions(current => current.map(item => ({ ...item, connected: false, connectedAt: undefined })));
+        setLoading(false);
+        return;
       }
-    } catch (e) {
-      console.warn('No se pudieron leer los agentes locales', e);
-    }
-  }, [session?.user?.id, session?.user?.email]);
 
-  // Guardar agentes en localStorage cuando cambien
-  const saveAgentsState = (updated: Agent[]) => {
-    setAgents(updated);
-    try {
-      const userKey = session?.user?.id || session?.user?.email || 'anonymous';
-      localStorage.setItem(`jetree_agents:${userKey}`, JSON.stringify(updated));
-    } catch (e) {
-      console.warn('Error guardando agentes', e);
+      setLoading(true);
+      setWorkspaceError('');
+      setDepartments([]);
+      setAgents([]);
+      setTasks([]);
+      setLogs([]);
+      setSelectedDepartmentFilter('all');
+      try {
+        const { data: authData } = await supabase.auth.getSession();
+        const token = authData.session?.access_token;
+        if (!token) throw new Error('AUTH_REQUIRED');
+        const headers = { Authorization: `Bearer ${token}` };
+        const [agentsResponse, departmentsResponse, connectionsResponse, tasksResponse, logsResponse] = await Promise.all([
+          fetch('/api/agents', { headers, cache: 'no-store' }),
+          fetch('/api/departments', { headers, cache: 'no-store' }),
+          fetch('/api/provider-connections', { headers, cache: 'no-store' }),
+          fetch('/api/tasks', { headers, cache: 'no-store' }),
+          fetch('/api/activity-logs', { headers, cache: 'no-store' }),
+        ]);
+        if (!active) return;
+        if ([agentsResponse, departmentsResponse, connectionsResponse, tasksResponse, logsResponse].some(response => !response.ok)) {
+          setWorkspaceError('Algunos datos no se pudieron cargar. Actualizá la página; si el problema persiste, revisá las migraciones de Supabase.');
+        }
+
+        if (agentsResponse.ok) {
+          const payload = await agentsResponse.json();
+          setAgents((payload.agents || []).map(mapAgentRow));
+        }
+        if (departmentsResponse.ok) {
+          const payload = await departmentsResponse.json();
+          setDepartments(payload.departments || []);
+        }
+        if (connectionsResponse.ok) {
+          const payload = await connectionsResponse.json();
+          const connections = Array.isArray(payload.connections) ? payload.connections : [];
+          setSubscriptions(current => current.map(item => {
+            const connection = connections.find((entry: any) => entry.provider === item.provider);
+            return {
+              ...item,
+              connected: connection?.status === 'configured',
+              connectedAt: connection?.connected_at,
+              tier: connection?.status === 'configured' ? 'API propia' : undefined,
+            };
+          }));
+        }
+        if (tasksResponse.ok) {
+          const payload = await tasksResponse.json();
+          setTasks((payload.tasks || []).map(mapTaskRow));
+        }
+        if (logsResponse.ok) {
+          const payload = await logsResponse.json();
+          setLogs(payload.logs || []);
+        }
+      } catch (error) {
+        if (active) {
+          setWorkspaceError('No se pudo cargar el workspace. Actualizá la página o volvé a iniciar sesión.');
+          console.warn('No se pudo cargar el workspace del usuario', error);
+        }
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadWorkspace();
+    return () => { active = false; };
+  }, [session?.user?.id]);
+
+  const saveAgentsState = (updated: Agent[]) => setAgents(updated);
+
+  const reloadAgentDepartmentData = async () => {
+    const { data } = await supabase.auth.getSession();
+    const headers = { Authorization: `Bearer ${data.session?.access_token || ''}` };
+    const [agentsResponse, departmentsResponse, tasksResponse] = await Promise.all([
+      fetch('/api/agents', { headers, cache: 'no-store' }),
+      fetch('/api/departments', { headers, cache: 'no-store' }),
+      fetch('/api/tasks', { headers, cache: 'no-store' }),
+    ]);
+    if (agentsResponse.ok) {
+      const payload = await agentsResponse.json();
+      setAgents((payload.agents || []).map(mapAgentRow));
+    }
+    if (departmentsResponse.ok) {
+      const payload = await departmentsResponse.json();
+      setDepartments(payload.departments || []);
+    }
+    if (tasksResponse.ok) {
+      const payload = await tasksResponse.json();
+      setTasks((payload.tasks || []).map(mapTaskRow));
     }
   };
 
@@ -211,40 +279,10 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Cargar tareas de Supabase y configurar escucha en tiempo real (Realtime)
+  // Escuchar tareas entrantes del webhook; la carga inicial usa el endpoint autenticado.
   useEffect(() => {
-    if (!session) return;
-
-    async function fetchTasks() {
-      try {
-        const { data, error } = await supabase
-          .from('tasks')
-          .select('*')
-          .order('created_at', { ascending: false });
-
-        if (!error && data) {
-          const formattedTasks: Task[] = data.map((t: any) => ({
-            id: t.id,
-            title: t.title,
-            description: t.description,
-            departmentId: t.department_id,
-            assignedAgentId: t.assigned_agent_id,
-            status: t.status || 'pending',
-            sourceChannel: t.source_channel || (t.description?.includes('Telegram') ? 'telegram' : 'web'),
-            createdAt: t.created_at,
-          }));
-          setTasks(formattedTasks);
-        }
-      } catch (err) {
-        console.error('Error cargando tareas:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchTasks();
-
-    // Suscripción Realtime a nuevas tareas (ej: entrantes desde Telegram Webhook)
+    const userId = session?.user?.id;
+    if (!userId) return;
     const channel = supabase
       .channel('tasks-realtime-feed')
       .on(
@@ -252,17 +290,8 @@ export default function Home() {
         { event: 'INSERT', schema: 'public', table: 'tasks' },
         (payload: any) => {
           const newTask = payload.new;
-          const formattedTask: Task = {
-            id: newTask.id,
-            title: newTask.title,
-            description: newTask.description,
-            departmentId: newTask.department_id,
-            status: newTask.status || 'pending',
-            sourceChannel: newTask.source_channel || 'telegram',
-            createdAt: newTask.created_at || new Date().toISOString(),
-          };
-
-          setTasks(prev => [formattedTask, ...prev]);
+          const formattedTask = mapTaskRow(newTask);
+          setTasks(prev => prev.some(task => task.id === formattedTask.id) ? prev : [formattedTask, ...prev]);
 
           addNewLog({
             id: `log-tg-${Date.now()}`,
@@ -278,7 +307,7 @@ export default function Home() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session]);
+  }, [session?.user?.id]);
 
   // Manejar Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -303,24 +332,34 @@ export default function Home() {
   };
 
   // Agregar nuevo log al monitoreo
-  const addNewLog = (newLog: AgentActivityLog) => {
+  const addNewLog = async (newLog: AgentActivityLog) => {
     setLogs(prev => [newLog, ...prev]);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      const response = await fetch('/api/activity-logs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(newLog),
+      });
+      if (!response.ok) throw new Error('No se pudo guardar el evento de actividad.');
+      const payload = await response.json();
+      if (payload.log) setLogs(current => current.map(log => log.id === newLog.id ? payload.log : log));
+    } catch (error) {
+      console.warn('No se pudo persistir el evento de actividad', error);
+    }
   };
 
-  // Guardar nuevo agente o editar existente
-  const handleSaveAgent = (savedAgent: Agent) => {
+  const handleSaveAgent = async (savedAgent: Agent) => {
     const exists = agents.some(a => a.id === savedAgent.id);
-    let updated: Agent[];
-    if (exists) {
-      updated = agents.map(a => (a.id === savedAgent.id ? savedAgent : a));
-    } else {
-      updated = [...agents, savedAgent];
-    }
-    saveAgentsState(updated);
-
-    supabase.auth.getSession().then(async ({ data: { session: authSession } }) => {
-      if (!authSession?.access_token) return;
-      const dbAgent = {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) throw new Error('Tu sesión expiró. Iniciá sesión nuevamente.');
+    const response = await fetch('/api/agents', {
+      method: exists ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
         ...(exists ? { id: savedAgent.id } : {}),
         department_id: savedAgent.departmentId,
         name: savedAgent.name,
@@ -333,33 +372,40 @@ export default function Home() {
         enabled_tool_ids: savedAgent.enabledPluginIds || [],
         avatar: savedAgent.avatar,
         status: savedAgent.status,
-      };
-      const response = await fetch('/api/agents', {
-        method: exists ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authSession.access_token}` },
-        body: JSON.stringify(dbAgent),
-      });
-      if (!response.ok) {
-        console.warn('No se pudo persistir el agente en Supabase', await response.text());
-      } else if (!exists) {
-        const saved = await response.json();
-        if (saved.agent?.id) {
-          const withServerId = updated.map(agent => agent.id === savedAgent.id ? { ...agent, id: saved.agent.id } : agent);
-          saveAgentsState(withServerId);
-        }
-      }
+      }),
     });
+    const payload = await response.json();
+    if (!response.ok || !payload.agent) throw new Error(payload.error || 'No se pudo guardar el agente.');
+    const saved = mapAgentRow(payload.agent);
+    saveAgentsState(exists
+      ? agents.map(agent => agent.id === saved.id ? saved : agent)
+      : [...agents, saved]);
 
     addNewLog({
       id: `log-${Date.now()}`,
       timestamp: new Date().toISOString(),
-      agentId: savedAgent.id,
-      agentName: savedAgent.name,
+      agentId: saved.id,
+      agentName: saved.name,
       type: 'manager_analysis',
       message: exists
-        ? `Configuración del agente ${savedAgent.name} actualizada.`
-        : `Nuevo agente ${savedAgent.name} (${savedAgent.roleType === 'manager' ? 'Manager / Orquestador' : 'Independiente'}) desplegado en el nodo.`,
+        ? `Configuración del agente ${saved.name} actualizada.`
+        : `Nuevo agente ${saved.name} (${saved.roleType === 'manager' ? 'Manager / Orquestador' : 'Independiente'}) guardado en el departamento.`,
     });
+  };
+
+  const handleDeleteAgent = async (agent: Agent) => {
+    if (!window.confirm(`¿Archivar el agente ${agent.name}? Sus conversaciones se conservarán y podrás restaurarlo desde la papelera.`)) return;
+    const { data } = await supabase.auth.getSession();
+    const response = await fetch(`/api/agents?id=${encodeURIComponent(agent.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${data.session?.access_token || ''}` },
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      window.alert(payload.error || 'No se pudo eliminar el agente.');
+      return;
+    }
+    setAgents(current => current.filter(item => item.id !== agent.id));
   };
 
   const handleCreateDepartment = async () => {
@@ -382,13 +428,75 @@ export default function Home() {
     if (payload.department) setDepartments(previous => [...previous, payload.department]);
   };
 
+  const handleEditDepartment = async (department: Department) => {
+    const name = window.prompt('Nombre del departamento', department.name);
+    if (!name?.trim()) return;
+    const description = window.prompt('Descripción del departamento', department.description) ?? department.description;
+    const { data } = await supabase.auth.getSession();
+    const response = await fetch('/api/departments', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` },
+      body: JSON.stringify({ id: department.id, name, description }),
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.department) {
+      window.alert(payload.error || 'No se pudo actualizar el departamento.');
+      return;
+    }
+    setDepartments(current => current.map(item => item.id === department.id ? payload.department : item));
+  };
+
+  const handleDeleteDepartment = async (department: Department) => {
+    if (!window.confirm(`¿Archivar el departamento ${department.name}? Sus agentes, tareas y conversaciones se conservarán y podrás restaurarlo desde la papelera.`)) return;
+    const { data } = await supabase.auth.getSession();
+    const response = await fetch(`/api/departments?id=${encodeURIComponent(department.id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${data.session?.access_token || ''}` },
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      window.alert(payload.error || 'No se pudo eliminar el departamento.');
+      return;
+    }
+    setDepartments(current => current.filter(item => item.id !== department.id));
+    setAgents(current => current.filter(agent => agent.departmentId !== department.id));
+    setTasks(current => current.filter(task => task.departmentId !== department.id));
+    if (selectedDepartmentFilter === department.id) setSelectedDepartmentFilter('all');
+  };
+
   // Actualizar estado de una tarea
   const handleUpdateTaskStatus = async (taskId: string, newStatus: Task['status']) => {
-    setTasks(prev => prev.map(t => (t.id === taskId ? { ...t, status: newStatus } : t)));
     try {
-      await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
-    } catch (e) {
-      console.warn('No se pudo persistir el estado de la tarea en BD', e);
+      const { data } = await supabase.auth.getSession();
+      const response = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` },
+        body: JSON.stringify({ id: taskId, status: newStatus }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.task) throw new Error(payload.error || 'No se pudo actualizar la tarea.');
+      setTasks(prev => prev.map(task => task.id === taskId ? mapTaskRow(payload.task) : task));
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'No se pudo persistir el estado de la tarea.');
+    }
+  };
+
+  const clearActivityLogs = async () => {
+    if (!window.confirm('¿Borrar los registros de actividad de tu cuenta? Esta acción no se puede deshacer.')) return;
+    const { data } = await supabase.auth.getSession();
+    const response = await fetch('/api/activity-logs', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${data.session?.access_token || ''}` },
+    });
+    if (response.ok) {
+      const refreshed = await fetch('/api/activity-logs', {
+        headers: { Authorization: `Bearer ${data.session?.access_token || ''}` },
+        cache: 'no-store',
+      });
+      if (refreshed.ok) {
+        const payload = await refreshed.json();
+        setLogs(payload.logs || []);
+      }
     }
   };
 
@@ -500,6 +608,10 @@ export default function Home() {
     );
   }
 
+  if (loading) {
+    return <div className="min-h-screen bg-[#05070b] text-cyan-300 flex items-center justify-center text-sm">Cargando tu workspace…</div>;
+  }
+
   // ----------------------------------------------------------------
   // SI HAY SESIÓN: MOSTRAR EL PANEL PRINCIPAL CORPORATIVO
   // ----------------------------------------------------------------
@@ -572,6 +684,11 @@ export default function Home() {
 
         {/* Viewport Principal */}
         <main className="p-8 space-y-8 max-w-7xl mx-auto w-full flex-1">
+          {workspaceError && (
+            <div role="alert" className="rounded-xl border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
+              {workspaceError}
+            </div>
+          )}
 
           {/* Métricas Corporativas Rápidas */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
@@ -685,6 +802,12 @@ export default function Home() {
                 </div>
                 <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setIsArchivedItemsOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 border border-gray-800 text-xs transition-all"
+                >
+                  Papelera
+                </button>
+                <button
                   onClick={handleCreateDepartment}
                   className="px-4 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-cyan-300 border border-cyan-900 text-xs transition-all"
                 >
@@ -709,6 +832,11 @@ export default function Home() {
                 selectedDepartmentId={selectedDepartmentFilter}
                 onSelectDepartment={setSelectedDepartmentFilter}
                 onSelectAgent={openChatWithAgent}
+                currentUserId={session.user.id}
+                isAdmin={isAdmin}
+                onEditDepartment={handleEditDepartment}
+                onDeleteDepartment={handleDeleteDepartment}
+                onManageMembers={setDepartmentForMembers}
               />
             </div>
           )}
@@ -798,10 +926,11 @@ export default function Home() {
                         agent={agent}
                         subordinates={subordinates}
                         onChat={openChatWithAgent}
-                        onEdit={ag => {
+                        onEdit={isAdmin || agent.createdBy === session.user.id ? ag => {
                           setAgentToEdit(ag);
                           setIsAgentModalOpen(true);
-                        }}
+                        } : undefined}
+                        onDelete={isAdmin || agent.createdBy === session.user.id ? handleDeleteAgent : undefined}
                         onConfigureTelegram={ag => openTelegramModalForAgent(ag)}
                       />
                     );
@@ -825,7 +954,7 @@ export default function Home() {
 
               <LiveMonitorFeed
                 logs={logs}
-                onClearLogs={() => setLogs([])}
+                onClearLogs={clearActivityLogs}
               />
             </div>
           )}
@@ -835,6 +964,7 @@ export default function Home() {
 
       {/* MODAL PARA CREAR / EDITAR AGENTES */}
       <AgentModal
+        key={agentToEdit?.id || 'new-agent'}
         isOpen={isAgentModalOpen}
         onClose={() => {
           setIsAgentModalOpen(false);
@@ -869,6 +999,17 @@ export default function Home() {
           setAgentForTelegram(null);
         }}
         onSaveBotConfig={handleSaveTelegramBot}
+      />
+
+      <DepartmentMembersModal
+        department={departmentForMembers}
+        onClose={() => setDepartmentForMembers(null)}
+      />
+
+      <ArchivedItemsModal
+        isOpen={isArchivedItemsOpen}
+        onClose={() => setIsArchivedItemsOpen(false)}
+        onRestored={reloadAgentDepartmentData}
       />
 
       {/* DRAWER / CHAT CON CUALQUIER AGENTE O MANAGER */}

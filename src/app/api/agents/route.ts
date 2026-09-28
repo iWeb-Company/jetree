@@ -4,7 +4,17 @@ import { requireUser } from '@/lib/server/auth';
 export async function GET(request: Request) {
   try {
     const { client } = await requireUser(request);
-    const { data, error } = await client.from('agents').select('*').order('created_at', { ascending: true });
+    const includeArchived = new URL(request.url).searchParams.get('includeArchived') === 'true';
+    let query = client.from('agents').select('*').order('created_at', { ascending: true });
+    if (!includeArchived) {
+      const { data: departments, error: departmentsError } = await client.from('departments')
+        .select('id').is('deleted_at', null);
+      if (departmentsError) return NextResponse.json({ error: 'No se pudieron cargar los departamentos.' }, { status: 500 });
+      const departmentIds = (departments || []).map(department => department.id);
+      if (departmentIds.length === 0) return NextResponse.json({ agents: [] });
+      query = query.is('deleted_at', null).in('department_id', departmentIds);
+    }
+    const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ agents: data || [] });
   } catch (error: any) {
@@ -18,7 +28,12 @@ export async function POST(request: Request) {
     const body = await request.json();
     const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar'];
     const payload = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)));
-    if (!payload.department_id || !payload.name || !payload.provider || !payload.model) return NextResponse.json({ error: 'department_id, name, provider y model son obligatorios' }, { status: 400 });
+    if (!payload.department_id || typeof payload.name !== 'string' || !payload.name.trim() || !payload.provider || typeof payload.model !== 'string' || !payload.model.trim()) {
+      return NextResponse.json({ error: 'department_id, name, provider y model son obligatorios' }, { status: 400 });
+    }
+    if (!['openai', 'gemini', 'claude', 'custom'].includes(String(payload.provider))) {
+      return NextResponse.json({ error: 'Proveedor no soportado.' }, { status: 400 });
+    }
     const { data, error } = await client.from('agents').insert({ ...payload, created_by: user.id }).select().single();
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ agent: data }, { status: 201 });
@@ -32,10 +47,19 @@ export async function PATCH(request: Request) {
     const { client } = await requireUser(request);
     const body = await request.json();
     if (!body.id) return NextResponse.json({ error: 'id es obligatorio' }, { status: 400 });
+    if (body.action === 'restore') {
+      const { data, error } = await client.from('agents').update({ deleted_at: null, updated_at: new Date().toISOString() })
+        .eq('id', body.id).select().maybeSingle();
+      if (error) return NextResponse.json({ error: 'No se pudo restaurar el agente.' }, { status: 400 });
+      if (!data) return NextResponse.json({ error: 'Agente no encontrado o sin permisos.' }, { status: 404 });
+      return NextResponse.json({ agent: data });
+    }
     const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar', 'status'];
     const payload = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)));
     delete (payload as any).id;
-    const { data, error } = await client.from('agents').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', body.id).select().single();
+    const { data, error } = await client.from('agents').update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', body.id).select().maybeSingle();
+    if (!error && !data) return NextResponse.json({ error: 'Agente no encontrado o no editable por este usuario.' }, { status: 404 });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ agent: data });
   } catch (error: any) {
@@ -48,7 +72,9 @@ export async function DELETE(request: Request) {
     const { client } = await requireUser(request);
     const id = new URL(request.url).searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'id es obligatorio' }, { status: 400 });
-    const { error } = await client.from('agents').delete().eq('id', id);
+    const { data, error } = await client.from('agents').update({ deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', id).select('id').maybeSingle();
+    if (!error && !data) return NextResponse.json({ error: 'Agente no encontrado o no eliminable por este usuario.' }, { status: 404 });
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
   } catch (error: any) {

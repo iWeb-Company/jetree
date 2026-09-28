@@ -51,10 +51,15 @@ export async function POST(request: Request) {
       .from('agents')
       .select('*')
       .eq('id', agentId)
+      .is('deleted_at', null)
       .maybeSingle();
 
     if (agentError) return NextResponse.json({ error: 'No se pudo cargar el agente.' }, { status: 500 });
     if (!agentRow) return NextResponse.json({ error: 'Agente no encontrado o sin permisos.' }, { status: 404 });
+    const { data: activeDepartment, error: activeDepartmentError } = await client.from('departments')
+      .select('id').eq('id', agentRow.department_id).is('deleted_at', null).maybeSingle();
+    if (activeDepartmentError) return NextResponse.json({ error: 'No se pudo validar el departamento.' }, { status: 500 });
+    if (!activeDepartment) return NextResponse.json({ error: 'El departamento de este agente está archivado.' }, { status: 404 });
     if (!supportedProviders.includes(agentRow.provider as AIProvider)) {
       return NextResponse.json({ error: 'El proveedor de este agente no está soportado.' }, { status: 400 });
     }
@@ -62,14 +67,17 @@ export async function POST(request: Request) {
     const { data: departmentRows, error: departmentError } = await client
       .from('agents')
       .select('*')
-      .eq('department_id', agentRow.department_id);
+      .eq('department_id', agentRow.department_id)
+      .is('deleted_at', null);
 
     if (departmentError) return NextResponse.json({ error: 'No se pudieron cargar los agentes del departamento.' }, { status: 500 });
 
     const departmentAgents = (departmentRows || []).map(toAgent);
     const agent = toAgent(agentRow);
     const availableAgents = departmentAgents.filter(item => item.id !== agent.id || agent.roleType === 'manager');
-    agent.subordinateIds = (agent.subordinateIds || []).filter(id => availableAgents.some(item => item.id === id));
+    agent.subordinateIds = (agent.subordinateIds || []).filter(id =>
+      availableAgents.some(item => item.id === id && item.roleType === 'independent'),
+    );
 
     const providers = new Set<AIProvider>([agent.provider]);
     if (agent.roleType === 'manager') {

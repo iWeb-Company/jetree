@@ -27,3 +27,16 @@ export async function requireUser(request: Request): Promise<{ client: ReturnTyp
   if (error || !data.user) throw new Error('AUTH_REQUIRED');
   return { client, user: data.user };
 }
+
+export async function requireWorkspaceAdmin(request: Request) {
+  const authenticated = await requireUser(request);
+  const { data: profile, error } = await authenticated.client
+    .from('profiles')
+    .select('role')
+    .eq('id', authenticated.user.id)
+    .maybeSingle();
+
+  if (error) throw new Error('PROFILE_LOOKUP_FAILED');
+  if (profile?.role !== 'admin') throw new Error('ADMIN_REQUIRED');
+  return authenticated;
+}
