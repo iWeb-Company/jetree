@@ -75,7 +75,9 @@ export async function POST(request: Request) {
     const departmentAgents = (departmentRows || []).map(toAgent);
     const agent = toAgent(agentRow);
     const availableAgents = departmentAgents.filter(item => item.id !== agent.id || agent.roleType === 'manager');
-    agent.subordinateIds = (agent.subordinateIds || []).filter(id => availableAgents.some(item => item.id === id));
+    agent.subordinateIds = (agent.subordinateIds || []).filter(id =>
+      availableAgents.some(item => item.id === id && item.roleType === 'independent'),
+    );
 
     const providers = new Set<AIProvider>([agent.provider]);
     if (agent.roleType === 'manager') {

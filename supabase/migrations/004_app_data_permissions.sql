@@ -108,6 +108,22 @@ create policy agents_write on public.agents for all using (
   or (created_by = auth.uid() and public.can_use_department(public.agents.department_id))
 );
 
+-- Normalize historical manager links before enforcing the stricter write trigger.
+update public.agents manager
+set subordinate_ids = coalesce((
+  select array_agg(distinct subordinate.id)
+  from public.agents subordinate
+  where subordinate.id = any(manager.subordinate_ids)
+    and subordinate.department_id = manager.department_id
+    and subordinate.role_type = 'independent'
+    and subordinate.deleted_at is null
+), '{}'::uuid[])
+where manager.role_type = 'manager';
+
+update public.agents
+set subordinate_ids = '{}'::uuid[]
+where role_type <> 'manager' and cardinality(subordinate_ids) > 0;
+
 create or replace function public.validate_agent_subordinates()
 returns trigger
 language plpgsql
