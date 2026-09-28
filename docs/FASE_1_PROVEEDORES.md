@@ -42,3 +42,14 @@ Aplicar las migraciones de Supabase en orden, incluidas `002_provider_credential
 3. Probar guardar, reemplazar, usar y revocar una clave de cada proveedor en staging.
 4. Validar con cada proveedor cualquier runtime que use una suscripción personal; no aceptar tokens OAuth extraídos de clientes o CLIs.
 5. Definir límites de frecuencia y gasto antes de abrir el alta de usuarios externos.
+
+## Viabilidad del inicio de sesión por suscripción
+
+Verificado el 28 de septiembre de 2026 en documentación oficial:
+
+- **OpenAI:** Codex admite inicio de sesión ChatGPT para acceso por suscripción y su App Server está documentado para integraciones profundas en productos. La ruta a evaluar es un runtime Codex aislado por usuario, con el usuario completando el inicio de sesión oficial; no guardar tokens de sesión en la bóveda API. Antes de habilitarlo en un Jetree multiusuario alojado, validar el flujo de autorización, aislamiento, aprobaciones y condiciones de uso para ese despliegue. [Autenticación de Codex](https://developers.openai.com/codex/auth) · [Codex App Server](https://developers.openai.com/codex/app-server).
+- **Anthropic:** no se debe implementar login de Claude.ai dentro de Jetree ni intermediar credenciales Pro/Max mediante Agent SDK. Anthropic sí describe una posibilidad distinta: ejecutar el binario oficial y sin modificar de Claude Code en infraestructura alojada, con cada usuario autenticándose con su propia suscripción y facturación directa; requiere aceptar sus Commercial Terms y cumplir las condiciones de alojamiento. [Legal y compliance de Claude Code](https://docs.anthropic.com/en/docs/claude-code/legal-and-compliance).
+- **Google:** Gemini CLI prohíbe que terceros recolecten o reutilicen su OAuth para acceder a sus servicios. Para un agente de terceros, Google indica usar Gemini API mediante una API key de AI Studio o Vertex AI; esa ruta tiene su propio esquema de cuota y facturación. [FAQ oficial de Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/resources/faq.md) · [Claves de Gemini API](https://ai.google.dev/gemini-api/docs/api-key) · [Precios de Gemini API](https://ai.google.dev/gemini-api/docs/pricing).
+
+Por tanto, el siguiente trabajo de suscripciones debe ser un adaptador de runtime oficial, habilitado por proveedor y separado de las conexiones API. No se debe pedir, copiar ni almacenar OAuth de un CLI como si fuera una clave API. Mientras se valida ese runtime, la conexión API ya implementada sigue disponible como opción explícita.
+
