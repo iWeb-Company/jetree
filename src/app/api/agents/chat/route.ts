@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeAgentChat } from '@/lib/agents/orchestrator';
-import { requireUser } from '@/lib/server/auth';
+import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import { Agent, AIProvider } from '@/types';
 
@@ -25,6 +25,15 @@ function toAgent(row: Record<string, any>): Agent {
     avatar: row.avatar || undefined,
     createdAt: row.created_at,
   };
+}
+
+function responseForError(error: unknown) {
+  const code = error instanceof Error ? error.message : '';
+  if (code === 'AUTH_REQUIRED') return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
+  if (code === 'SERVER_CONFIGURATION_ERROR') {
+    return NextResponse.json({ error: 'La bóveda de credenciales no está configurada en el servidor.' }, { status: 503 });
+  }
+  return NextResponse.json({ error: 'No se pudo ejecutar el agente.' }, { status: 500 });
 }
 
 export async function POST(request: Request) {
@@ -81,27 +90,77 @@ export async function POST(request: Request) {
       apiKeys[provider] = apiKey;
     }
 
-    const history = Array.isArray(body.chatHistory)
-      ? body.chatHistory.slice(-12).flatMap((item: any) => {
-        if (!item || !['user', 'assistant'].includes(item.role) || typeof item.content !== 'string') return [];
-        return [{ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 6000) }];
-      })
-      : [];
+    let conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
+    if (conversationId) {
+      const { data: conversation, error: conversationError } = await client
+        .from('conversations')
+        .select('id, agent_id')
+        .eq('id', conversationId)
+        .maybeSingle();
+      if (conversationError) return NextResponse.json({ error: 'No se pudo cargar la conversación compartida.' }, { status: 500 });
+      if (!conversation || conversation.agent_id !== agent.id) {
+        return NextResponse.json({ error: 'Conversación no encontrada o sin permisos.' }, { status: 404 });
+      }
+    } else {
+      const { data: conversation, error: conversationError } = await client
+        .from('conversations')
+        .insert({
+          department_id: agent.departmentId,
+          agent_id: agent.id,
+          created_by: user.id,
+          title: message.slice(0, 120),
+        })
+        .select('id')
+        .single();
+      if (conversationError || !conversation) {
+        return NextResponse.json({ error: 'No se pudo iniciar la conversación compartida.' }, { status: 403 });
+      }
+      conversationId = conversation.id;
+    }
+
+    const { data: priorMessages, error: historyError } = await client
+      .from('messages')
+      .select('role, content')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .limit(12);
+    if (historyError) return NextResponse.json({ error: 'No se pudo cargar el historial de conversación.' }, { status: 500 });
+
+    const { error: userMessageError } = await client.from('messages').insert({
+      conversation_id: conversationId,
+      author_user_id: user.id,
+      role: 'user',
+      content: message,
+    });
+    if (userMessageError) return NextResponse.json({ error: 'No se pudo guardar el mensaje.' }, { status: 500 });
+
+    const history = (priorMessages || []).reverse().flatMap(item => {
+      if (!['user', 'assistant'].includes(item.role) || typeof item.content !== 'string') return [];
+      return [{ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 6000) }];
+    });
 
     const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys);
-    return NextResponse.json(result);
+    const service = getServiceSupabase();
+    const { error: assistantMessageError } = await service.from('messages').insert({
+      conversation_id: conversationId,
+      role: 'assistant',
+      content: result.reply,
+      delegation: result.delegation || null,
+    });
+    if (assistantMessageError) {
+      return NextResponse.json({ error: 'El agente respondió, pero no se pudo guardar la respuesta compartida.' }, { status: 500 });
+    }
+    await service.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+
+    return NextResponse.json({ ...result, conversationId });
   } catch (error) {
     const code = error instanceof Error ? error.message : '';
-    if (code === 'AUTH_REQUIRED') return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
-    if (code === 'SERVER_CONFIGURATION_ERROR') {
-      return NextResponse.json({ error: 'La bóveda de credenciales no está configurada en el servidor.' }, { status: 503 });
-    }
     if (code === 'PROVIDER_CREDENTIAL_REQUIRED') {
       return NextResponse.json({ error: 'Falta una conexión API para el proveedor elegido.' }, { status: 409 });
     }
     if (code === 'PROVIDER_EXECUTION_FAILED') {
       return NextResponse.json({ error: 'El proveedor rechazó o no pudo completar la solicitud.' }, { status: 502 });
     }
-    return NextResponse.json({ error: 'No se pudo ejecutar el agente.' }, { status: 500 });
+    return responseForError(error);
   }
 }

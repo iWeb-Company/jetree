@@ -20,17 +20,24 @@ export default function AgentChatDrawer({
   onNewLog,
 }: AgentChatDrawerProps) {
   const isManager = agent?.roleType === 'manager';
-  const subordinates = agent ? availableAgents.filter(a => agent.subordinateIds?.includes(a.id)) : [];
+  const subordinates = React.useMemo(
+    () => agent ? availableAgents.filter(a => agent.subordinateIds?.includes(a.id)) : [],
+    [agent, availableAgents],
+  );
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!agent) return;
-    // Inicializar con mensaje de bienvenida del agente
-    if (messages.length === 0) {
+    if (!agent || !isOpen) return;
+    let active = true;
+    setMessages([]);
+    setConversationId(null);
+
+    const loadSharedConversation = async () => {
       const welcome: ChatMessage = {
         id: `msg-${Date.now()}`,
         agentId: agent.id,
@@ -40,9 +47,30 @@ export default function AgentChatDrawer({
           : `👋 Hola, soy **${agent.name}**. ¿En qué puedo ayudarte hoy dentro de mi especialidad?`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages([welcome]);
-    }
-  }, [agent?.id]);
+
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session?.access_token) {
+          if (active) setMessages([welcome]);
+          return;
+        }
+        const response = await fetch(`/api/conversations?agentId=${encodeURIComponent(agent.id)}`, {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          cache: 'no-store',
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'No se pudo cargar el chat compartido.');
+        if (!active) return;
+        setConversationId(payload.conversation?.id || null);
+        setMessages(Array.isArray(payload.messages) && payload.messages.length ? payload.messages : [welcome]);
+      } catch {
+        if (active) setMessages([welcome]);
+      }
+    };
+
+    loadSharedConversation();
+    return () => { active = false; };
+  }, [agent, isManager, isOpen, subordinates]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -77,8 +105,8 @@ export default function AgentChatDrawer({
         },
         body: JSON.stringify({
           agentId: agent.id,
+          conversationId,
           message: userMsgText,
-          chatHistory: messages.slice(-12).map(m => ({ role: m.role, content: m.content })),
         }),
       });
 
@@ -87,6 +115,7 @@ export default function AgentChatDrawer({
       if (!res.ok) {
         throw new Error(data.error || 'Error al comunicarse con el agente');
       }
+      setConversationId(data.conversationId || conversationId);
 
       // Propagar logs generados a la consola de monitoreo global
       if (data.logs && Array.isArray(data.logs)) {
@@ -149,6 +178,7 @@ export default function AgentChatDrawer({
                 <span>•</span>
                 <span className="text-emerald-400">● Conectado</span>
               </p>
+              <p className="mt-1 text-[10px] text-cyan-400/80">Conversación compartida con el departamento</p>
             </div>
           </div>
 

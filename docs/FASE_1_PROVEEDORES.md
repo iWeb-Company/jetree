@@ -6,6 +6,7 @@
 - La interfaz muestra metadatos de conexión; nunca vuelve a recibir la clave guardada.
 - El servidor cifra las claves con AES-256-GCM y las guarda en `provider_connection_secrets`, separadas de los metadatos y sin acceso para `anon` o `authenticated`.
 - El endpoint de chat autentica la sesión, carga el agente desde Supabase con RLS y obtiene las credenciales del usuario autenticado. No acepta un agente, proveedor, permiso o API key enviados por el navegador.
+- Las conversaciones y mensajes se guardan en Supabase y se comparten dentro del departamento, sujetos a RLS. Cada persona ejecuta el agente con sus propias credenciales API.
 - Los agentes managers solo pueden delegar a agentes visibles dentro de su departamento.
 - OpenRouter usa un endpoint fijo para evitar aceptar URLs de destino arbitrarias desde la configuración.
 - Si falta una clave o falla el proveedor, la ejecución devuelve un error explícito; no usa credenciales globales ni respuestas simuladas.
@@ -21,7 +22,7 @@ JETREE_CREDENTIALS_ENCRYPTION_KEY=
 
 Generar la clave de cifrado con `openssl rand -base64 32`. No debe tener prefijo `NEXT_PUBLIC_`. Guardar una copia protegida junto con los respaldos de la base. Para cambiarla, primero hay que descifrar y volver a cifrar todos los secretos; reemplazarla directamente dejaría las credenciales existentes ilegibles.
 
-Aplicar las migraciones de Supabase en orden, incluida `002_provider_credential_vault.sql`, antes de habilitar las rutas nuevas.
+Aplicar las migraciones de Supabase en orden, incluidas `002_provider_credential_vault.sql` y `003_shared_conversations.sql`, antes de habilitar las rutas nuevas.
 
 ## Modos de uso y límites actuales
 
