@@ -27,6 +27,7 @@ export default function TaskBoard({
     { key: 'pending', title: 'Por Iniciar / Telegram', badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20', dotColor: 'bg-amber-400' },
     { key: 'in_progress', title: 'En Proceso / Asignada', badgeColor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20', dotColor: 'bg-cyan-400' },
     { key: 'completed', title: 'Completadas / Entregadas', badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20', dotColor: 'bg-emerald-400' },
+    { key: 'failed', title: 'Fallidas', badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/20', dotColor: 'bg-rose-400' },
   ];
 
   return (
@@ -69,7 +70,7 @@ export default function TaskBoard({
       )}
 
       {/* Columnas Kanban */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {columns.map(col => {
           const colTasks = filteredTasks.filter(t => (t.status || 'pending') === col.key);
 
@@ -124,6 +125,16 @@ export default function TaskBoard({
                             </p>
                           )}
 
+                          {task.status === 'failed' && task.lastError && (
+                            <p className="text-[10px] text-rose-300 bg-rose-950/30 border border-rose-900/40 rounded-lg p-2">Error: {task.lastError}</p>
+                          )}
+                          {(task.retryCount || task.traceId) && (
+                            <div className="flex justify-between gap-2 text-[9px] text-gray-500 font-mono">
+                              <span>{task.retryCount ? `Reintentos: ${task.retryCount}` : ''}</span>
+                              {task.traceId && <span title={task.traceId}>Trace: {task.traceId.slice(0, 8)}</span>}
+                            </div>
+                          )}
+
                           {/* Transiciones de Estado Rápidas */}
                           {onUpdateStatus && (
                             <div className="pt-2 border-t border-cyan-950/40 flex items-center justify-between text-[10px]">
@@ -152,6 +163,9 @@ export default function TaskBoard({
                                   >
                                     Completar ✓
                                   </button>
+                                )}
+                                {col.key === 'failed' && (
+                                  <button onClick={() => onUpdateStatus(task.id, 'pending')} className="px-1.5 py-0.5 rounded bg-rose-950/40 text-rose-300 border border-rose-900/40">Reabrir</button>
                                 )}
                               </div>
                             </div>

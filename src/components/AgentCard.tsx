@@ -21,7 +21,7 @@ export default function AgentCard({
   onConfigureTelegram,
 }: AgentCardProps) {
   const isManager = agent.roleType === 'manager';
-  const hasTelegramBot = Boolean(agent.telegramBot?.botToken);
+  const hasTelegramBot = Boolean(agent.telegramBot?.isActive);
 
   const getProviderBadge = (provider: Agent['provider']) => {
     switch (provider) {

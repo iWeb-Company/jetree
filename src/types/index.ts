@@ -13,10 +13,10 @@ export type AgentRoleType = 'independent' | 'manager';
 export type AIProvider = 'openai' | 'gemini' | 'claude' | 'custom';
 
 export type TelegramBotConfig = {
-  botToken?: string;              // Token obtenido en @BotFather (ej. 123456:ABC-DEF...)
   botUsername?: string;           // @MiAgenteBot
   webhookUrl?: string;            // URL del webhook asignado al agente
   isActive?: boolean;             // Si está conectado y respondiendo
+  updatedAt?: string;
 };
 
 export type AgentPlugin = {
@@ -68,6 +68,9 @@ export type Task = {
   priority?: 'low' | 'medium' | 'high';
   sourceChannel?: 'telegram' | 'web' | 'api';
   result?: string;
+  retryCount?: number;
+  lastError?: string;
+  traceId?: string;
   createdAt: string;
 };
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireUser } from '@/lib/server/auth';
+import { getServiceSupabase, requireUser } from '@/lib/server/auth';
 
 const statuses = ['pending', 'in_progress', 'completed', 'failed'] as const;
 
@@ -64,6 +64,21 @@ export async function PATCH(request: Request) {
       .maybeSingle();
     if (error) return NextResponse.json({ error: 'No se pudo actualizar la tarea.' }, { status: 403 });
     if (!data) return NextResponse.json({ error: 'Tarea no encontrada o sin permisos.' }, { status: 404 });
+    if (body.status === 'pending' && data.source_channel === 'telegram' && data.status === 'pending') {
+      const service = getServiceSupabase();
+      const { data: failedUpdates, error: lookupError } = await service.from('telegram_updates').select('id,response_text')
+        .eq('task_id', data.id).eq('status', 'failed');
+      if (lookupError) return NextResponse.json({ error: 'No se pudo reencolar la tarea.' }, { status: 500 });
+      for (const update of failedUpdates || []) {
+        const { error: retryError } = await service.from('telegram_updates').update({
+          status: update.response_text ? 'delivery_pending' : 'pending', attempts: 0,
+          next_attempt_at: new Date().toISOString(), locked_at: null, last_error: null, updated_at: new Date().toISOString(),
+        }).eq('id', update.id);
+        if (retryError) return NextResponse.json({ error: 'No se pudo reencolar la tarea.' }, { status: 500 });
+      }
+      const { data: refreshed } = await client.from('tasks').update({ retry_count: 0, last_error: null, updated_at: new Date().toISOString() }).eq('id', data.id).select('*').single();
+      return NextResponse.json({ task: refreshed || data });
+    }
     return NextResponse.json({ task: data });
   } catch (error) {
     const code = error instanceof Error ? error.message : '';

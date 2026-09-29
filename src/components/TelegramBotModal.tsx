@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Agent } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 interface TelegramBotModalProps {
   isOpen: boolean;
   agent: Agent | null;
   onClose: () => void;
-  onSaveBotConfig: (agentId: string, botToken: string, botUsername: string) => void;
+  onSaveBotConfig: (agentId: string, botUsername: string) => void;
 }
 
 export default function TelegramBotModal({
@@ -16,12 +17,17 @@ export default function TelegramBotModal({
   onClose,
   onSaveBotConfig,
 }: TelegramBotModalProps) {
-  const [botToken, setBotToken] = useState(agent?.telegramBot?.botToken || '');
+  const [botToken, setBotToken] = useState('');
   const [botUsername, setBotUsername] = useState(agent?.telegramBot?.botUsername || '');
   const [statusMsg, setStatusMsg] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
 
-  // Webhook URL calculada para este agente
+  useEffect(() => {
+    setBotToken('');
+    setBotUsername(agent?.telegramBot?.botUsername || '');
+    setStatusMsg('');
+  }, [agent?.id, agent?.telegramBot?.botUsername]);
+
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhook/telegram/${agent?.id || ''}`
     : `https://tu-dominio.com/api/webhook/telegram/${agent?.id || ''}`;
@@ -36,35 +42,43 @@ export default function TelegramBotModal({
     setStatusMsg('');
 
     try {
-      // Registrar webhook directamente contra la Telegram Bot API
-      const res = await fetch(`https://api.telegram.org/bot${botToken.trim()}/setWebhook`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: webhookUrl }),
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Inicia sesión de nuevo para conectar el bot.');
+      const res = await fetch(`/api/agents/${agent.id}/telegram`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ botToken: botToken.trim() }),
       });
-
-      const data = await res.json();
-
-      if (data.ok) {
-        setStatusMsg('✅ ¡Webhook registrado con éxito en Telegram! El bot ya está activo.');
-        onSaveBotConfig(agent.id, botToken.trim(), botUsername.trim());
-      } else {
-        setStatusMsg(`❌ Error de Telegram: ${data.description || 'Token inválido'}`);
-      }
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'No se pudo conectar el bot.');
+      const username = payload.telegramBot.botUsername || botUsername.trim();
+      setBotUsername(username);
+      setBotToken('');
+      setStatusMsg('✅ Bot conectado y webhook protegido registrado.');
+      onSaveBotConfig(agent.id, username);
     } catch (err: any) {
-      // Si falla por CORS en navegador local, guardar igualmente y dar instrucciones
-      setStatusMsg(`ℹ️ Configuración guardada. Para completar el enlace del webhook en producción: visita https://api.telegram.org/bot${botToken.trim()}/setWebhook?url=${webhookUrl}`);
-      onSaveBotConfig(agent.id, botToken.trim(), botUsername.trim());
+      setStatusMsg(`❌ ${err.message || 'No se pudo conectar el bot.'}`);
     } finally {
       setIsVerifying(false);
     }
   };
 
-  const handleSaveOnly = () => {
-    if (!botToken.trim() || !agent) return;
-    onSaveBotConfig(agent.id, botToken.trim(), botUsername.trim());
-    setStatusMsg('✅ Token guardado en la configuración del agente.');
-    setTimeout(() => onClose(), 800);
+  const handleDisconnect = async () => {
+    if (!agent) return;
+    setIsVerifying(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const res = await fetch(`/api/agents/${agent.id}/telegram`, { method: 'DELETE', headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'No se pudo desconectar el bot.');
+      onSaveBotConfig(agent.id, '');
+      setBotUsername('');
+      setStatusMsg('Bot desconectado.');
+    } catch (err: any) {
+      setStatusMsg(`❌ ${err.message || 'No se pudo desconectar el bot.'}`);
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   if (!isOpen || !agent) return null;
@@ -134,7 +148,7 @@ export default function TelegramBotModal({
               type="password"
               value={botToken}
               onChange={e => setBotToken(e.target.value)}
-              placeholder="1234567890:AAHdqTcvCH1vGWJxfUks..."
+              placeholder={agent.telegramBot?.isActive ? 'Token protegido. Pega uno nuevo para reemplazarlo.' : 'Pega el token de @BotFather'}
               className="w-full bg-[#05070b] border border-cyan-950 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-cyan-500 font-mono transition-all"
             />
           </div>
@@ -187,13 +201,7 @@ export default function TelegramBotModal({
             </a>
           )}
           <div className="flex items-center gap-2 ml-auto">
-            <button
-              type="button"
-              onClick={handleSaveOnly}
-              className="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 text-xs font-medium transition-all"
-            >
-              Guardar Token
-            </button>
+            {agent.telegramBot?.isActive && <button type="button" disabled={isVerifying} onClick={handleDisconnect} className="px-3.5 py-2 rounded-xl bg-gray-900 hover:bg-gray-800 text-gray-300 text-xs font-medium">Desconectar</button>}
             <button
               type="button"
               disabled={isVerifying || !botToken.trim()}
