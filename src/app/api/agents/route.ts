@@ -16,7 +16,21 @@ export async function GET(request: Request) {
     }
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ agents: data || [] });
+    const rows = data || [];
+    if (rows.length === 0) return NextResponse.json({ agents: [] });
+    const service = (await import('@/lib/server/auth')).getServiceSupabase();
+    const { data: bots, error: botsError } = await service.from('telegram_bots')
+      .select('agent_id,bot_username,is_active,updated_at').in('agent_id', rows.map(agent => agent.id));
+    if (botsError) return NextResponse.json({ error: 'No se pudo cargar el estado de Telegram.' }, { status: 500 });
+    const botByAgent = new Map((bots || []).map(bot => [bot.agent_id, bot]));
+    return NextResponse.json({ agents: rows.map(agent => ({
+      ...agent,
+      telegram_bot: botByAgent.has(agent.id) ? {
+        bot_username: botByAgent.get(agent.id)?.bot_username,
+        is_active: botByAgent.get(agent.id)?.is_active,
+        updated_at: botByAgent.get(agent.id)?.updated_at,
+      } : null,
+    })) });
   } catch (error: any) {
     return NextResponse.json({ error: error.message === 'AUTH_REQUIRED' ? 'Autenticación requerida' : 'Error interno' }, { status: error.message === 'AUTH_REQUIRED' ? 401 : 500 });
   }

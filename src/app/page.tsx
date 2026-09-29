@@ -33,6 +33,12 @@ function mapAgentRow(row: any): Agent {
     createdAt: row.created_at,
     createdBy: row.created_by,
     deletedAt: row.deleted_at,
+    telegramBot: row.telegram_bot ? {
+      botUsername: row.telegram_bot.bot_username || undefined,
+      isActive: Boolean(row.telegram_bot.is_active),
+      webhookUrl: `/api/webhook/telegram/${row.id}`,
+      updatedAt: row.telegram_bot.updated_at,
+    } : undefined,
   };
 }
 
@@ -47,6 +53,9 @@ function mapTaskRow(row: any): Task {
     sourceChannel: row.source_channel || 'web',
     result: row.result || undefined,
     createdAt: row.created_at,
+    retryCount: row.retry_count || 0,
+    lastError: row.last_error || undefined,
+    traceId: row.trace_id || undefined,
   };
 }
 
@@ -245,23 +254,20 @@ export default function Home() {
   };
 
   // Guardar configuración del bot de Telegram para un agente específico
-  const handleSaveTelegramBot = (agentId: string, botToken: string, botUsername: string) => {
+  const handleSaveTelegramBot = (agentId: string, botUsername: string) => {
     const updated = agents.map(a => {
       if (a.id === agentId) {
         return {
           ...a,
-          telegramBot: {
-            botToken,
-            botUsername,
-            isActive: true,
-            webhookUrl: `/api/webhook/telegram/${agentId}`,
-          },
+          telegramBot: botUsername ? {
+            botUsername, isActive: true, webhookUrl: `/api/webhook/telegram/${agentId}`,
+          } : undefined,
         };
       }
       return a;
     });
 
-    saveAgentsState(updated);
+    setAgents(updated);
 
     const targetAg = agents.find(a => a.id === agentId);
     addNewLog({
@@ -270,8 +276,8 @@ export default function Home() {
       agentId,
       agentName: targetAg?.name,
       type: 'telegram_in',
-      message: `Bot de Telegram @${botUsername || 'AgenteBot'} vinculado exitosamente al agente ${targetAg?.name}.`,
-      details: `Token de BotFather activado. Escuchando en webhook /api/webhook/telegram/${agentId}`,
+      message: botUsername ? `Bot de Telegram @${botUsername} vinculado al agente ${targetAg?.name}.` : `Bot de Telegram desconectado del agente ${targetAg?.name}.`,
+      details: botUsername ? `Webhook activo en /api/webhook/telegram/${agentId}` : 'Se revocó el webhook y se eliminó el token cifrado.',
     });
   };
 
@@ -636,7 +642,7 @@ export default function Home() {
   const managersCount = agents.filter(a => a.roleType === 'manager').length;
   const independentCount = agents.filter(a => a.roleType === 'independent').length;
   const connectedProvidersCount = subscriptions.filter(s => s.connected).length;
-  const telegramBotsCount = agents.filter(a => a.telegramBot?.botToken).length;
+  const telegramBotsCount = agents.filter(a => a.telegramBot?.isActive).length;
 
   return (
     <div className="min-h-screen bg-[#05070b] text-gray-100 flex font-sans selection:bg-cyan-500 selection:text-black">
