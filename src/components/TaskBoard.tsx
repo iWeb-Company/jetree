@@ -130,7 +130,7 @@ export default function TaskBoard({
                           )}
                           {(task.retryCount || task.traceId) && (
                             <div className="flex justify-between gap-2 text-[9px] text-gray-500 font-mono">
-                              <span>{task.retryCount ? `Reintentos: ${task.retryCount}` : ''}</span>
+                              <span>{task.sourceChannel === 'telegram' ? `Reintentos: ${task.retryCount || 0}` : ''}</span>
                               {task.traceId && <span title={task.traceId}>Trace: {task.traceId.slice(0, 8)}</span>}
                             </div>
                           )}

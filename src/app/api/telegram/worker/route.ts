@@ -42,7 +42,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       last_error: reason, updated_at: new Date().toISOString(),
     }).eq('id', update.id);
     if (taskId || update.task_id) await service.from('tasks').update({
-      status: terminal ? 'failed' : 'in_progress', retry_count: attempt, last_error: reason,
+      status: terminal ? 'failed' : 'in_progress', retry_count: Math.max(0, attempt - 1), last_error: reason,
       updated_at: new Date().toISOString(),
     }).eq('id', taskId || update.task_id);
   };
