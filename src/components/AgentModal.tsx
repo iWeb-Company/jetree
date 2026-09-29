@@ -39,7 +39,7 @@ export default function AgentModal({
     agentToEdit?.subordinateIds || []
   );
   const [enabledPluginIds, setEnabledPluginIds] = useState<string[]>(
-    agentToEdit?.enabledPluginIds || ALL_CHATGPT_WORK_PLUGINS.filter(p => p.enabledByDefault).map(p => p.id)
+    (agentToEdit?.enabledPluginIds || []).filter(id => ALL_CHATGPT_WORK_PLUGINS.some(plugin => plugin.id === id))
   );
 
   // Pestaña interna del modal: 'general' o 'plugins'
@@ -192,7 +192,7 @@ export default function AgentModal({
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                <span>🧩 Catálogo Completo de Plugins & Skills ({ALL_CHATGPT_WORK_PLUGINS.length})</span>
+                <span>🔌 Conectores con acciones reales ({ALL_CHATGPT_WORK_PLUGINS.length})</span>
                 <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/30 text-cyan-200 font-mono">
                   {enabledPluginIds.length} activos
                 </span>
@@ -463,10 +463,10 @@ export default function AgentModal({
                   <div>
                     <h4 className="text-sm font-bold text-white flex items-center gap-2">
                       <span>🧩</span>
-                      <span>Plugins & Integraciones de ChatGPT Work</span>
+                      <span>Conectores disponibles para este agente</span>
                     </h4>
                     <p className="text-[11px] text-gray-400">
-                      Work with ChatGPT & AI across your favorite tools. Auto-detectado para todos los modelos.
+                      GitHub y Google Drive usan conexiones OAuth de tu usuario. Las escrituras siempre requieren aprobación explícita.
                     </p>
                   </div>
                   

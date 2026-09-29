@@ -10,6 +10,7 @@ interface AgentChatDrawerProps {
   onClose: () => void;
   availableAgents: Agent[];
   onNewLog: (log: AgentActivityLog) => void;
+  onManageTools?: () => void;
 }
 
 export default function AgentChatDrawer({
@@ -18,6 +19,7 @@ export default function AgentChatDrawer({
   onClose,
   availableAgents,
   onNewLog,
+  onManageTools,
 }: AgentChatDrawerProps) {
   const isManager = agent?.roleType === 'manager';
   const subordinates = React.useMemo(
@@ -29,7 +31,38 @@ export default function AgentChatDrawer({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [toolPanelOpen, setToolPanelOpen] = useState(false);
+  const [selectedToolId, setSelectedToolId] = useState('');
+  const [selectedOperation, setSelectedOperation] = useState('');
+  const [toolInput, setToolInput] = useState('{}');
+  const [toolBusy, setToolBusy] = useState(false);
+  const [toolNotice, setToolNotice] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const usableToolIds = (agent?.enabledPluginIds || []).filter(id => ['plugin-github-core', 'plugin-google-drive-core'].includes(id));
+  const operationsByTool: Record<string, Array<{ id: string; label: string; sample: Record<string, unknown> }>> = {
+    'plugin-github-core': [
+      { id: 'list_repositories', label: 'Listar repositorios públicos', sample: {} },
+      { id: 'get_file', label: 'Leer archivo', sample: { owner: 'iWeb-Company', repo: 'jetree', path: 'README.md' } },
+      { id: 'create_issue', label: 'Crear issue (requiere aprobación)', sample: { owner: 'iWeb-Company', repo: 'jetree', title: 'Título', body: 'Descripción' } },
+      { id: 'create_file', label: 'Crear archivo (requiere aprobación)', sample: { owner: 'iWeb-Company', repo: 'jetree', path: 'docs/nota.md', message: 'docs: add note', content: 'Contenido' } },
+    ],
+    'plugin-google-drive-core': [
+      { id: 'search_files', label: 'Buscar archivos', sample: { query: 'informe', pageSize: 10 } },
+      { id: 'get_text_file', label: 'Leer archivo de texto', sample: { fileId: 'ID_DEL_ARCHIVO' } },
+      { id: 'create_doc', label: 'Crear documento (requiere aprobación)', sample: { name: 'Nuevo documento', content: 'Contenido' } },
+    ],
+  };
+
+  useEffect(() => {
+    if (!usableToolIds.length) return;
+    const toolId = usableToolIds.includes(selectedToolId) ? selectedToolId : usableToolIds[0];
+    const operations = operationsByTool[toolId] || [];
+    const operation = operations.find(item => item.id === selectedOperation) || operations[0];
+    setSelectedToolId(toolId);
+    if (operation) { setSelectedOperation(operation.id); setToolInput(JSON.stringify(operation.sample, null, 2)); }
+  // Initialize the tool runner from the agent's enabled connector set.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agent?.id, usableToolIds.join(',')]);
 
   useEffect(() => {
     if (!agent || !isOpen) return;
@@ -75,6 +108,20 @@ export default function AgentChatDrawer({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!agent || !isOpen) return;
+    const onToolResult = (event: Event) => {
+      const result = (event as CustomEvent).detail;
+      setMessages(current => [...current, {
+        id: `tool-approval-${Date.now()}`, agentId: agent.id, role: 'assistant',
+        content: `Resultado de la acción aprobada:\n${JSON.stringify(result, null, 2)}`.slice(0, 11_500),
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }]);
+    };
+    window.addEventListener('jetree-tool-result', onToolResult);
+    return () => window.removeEventListener('jetree-tool-result', onToolResult);
+  }, [agent, isOpen]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,6 +193,33 @@ export default function AgentChatDrawer({
     }
   };
 
+  const runTool = async () => {
+    if (!agent || !selectedToolId || !selectedOperation || toolBusy) return;
+    let input: unknown;
+    try { input = JSON.parse(toolInput); } catch { setToolNotice('El formato de entrada debe ser JSON válido.'); return; }
+    setToolBusy(true); setToolNotice('');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('La sesión expiró. Iniciá sesión nuevamente.');
+      const response = await fetch('/api/agent-tools', {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id, conversationId, toolId: selectedToolId, operation: selectedOperation, input }),
+      });
+      const payload = await response.json();
+      if (!response.ok && response.status !== 202) throw new Error(payload.error || 'La herramienta no pudo ejecutarse.');
+      if (payload.pendingApproval) {
+        setToolNotice('La escritura quedó pendiente. Revisá el detalle en Herramientas y aprobala para ejecutarla.');
+        onManageTools?.();
+      } else {
+        const content = `Resultado de herramienta (${selectedOperation}):\n${JSON.stringify(payload.result, null, 2)}`;
+        setMessages(current => [...current, { id: `tool-${Date.now()}`, agentId: agent.id, role: 'assistant', content, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+        setToolNotice('Lectura completada y registrada en auditoría.');
+      }
+    } catch (error) { setToolNotice(error instanceof Error ? error.message : 'La herramienta no pudo ejecutarse.'); }
+    finally { setToolBusy(false); }
+  };
+
   if (!isOpen || !agent) return null;
 
   return (
@@ -181,7 +255,7 @@ export default function AgentChatDrawer({
               <p className="mt-1 text-[10px] text-cyan-400/80">Conversación compartida con el departamento</p>
             </div>
           </div>
-
+          {usableToolIds.length > 0 && <button onClick={() => setToolPanelOpen(value => !value)} className="mr-2 rounded-lg border border-cyan-800/60 px-3 py-2 text-xs text-cyan-200">🔌 Herramientas</button>}
           <button
             onClick={onClose}
             className="w-9 h-9 rounded-xl bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center transition-all"
@@ -206,6 +280,29 @@ export default function AgentChatDrawer({
             </div>
           </div>
         )}
+
+        {toolPanelOpen && usableToolIds.length > 0 && <section className="space-y-2 border-b border-cyan-950/70 bg-[#070b12] p-4">
+          <div className="flex flex-wrap gap-2">
+            <select value={selectedToolId} onChange={event => {
+              const next = event.target.value;
+              const first = operationsByTool[next]?.[0];
+              setSelectedToolId(next);
+              if (first) { setSelectedOperation(first.id); setToolInput(JSON.stringify(first.sample, null, 2)); }
+            }} className="rounded-lg border border-cyan-950 bg-[#05070b] px-2 py-2 text-xs text-white">
+              {usableToolIds.map(id => <option key={id} value={id}>{id === 'plugin-github-core' ? 'GitHub' : 'Google Drive'}</option>)}
+            </select>
+            <select value={selectedOperation} onChange={event => {
+              const next = operationsByTool[selectedToolId]?.find(item => item.id === event.target.value);
+              setSelectedOperation(event.target.value);
+              if (next) setToolInput(JSON.stringify(next.sample, null, 2));
+            }} className="min-w-56 flex-1 rounded-lg border border-cyan-950 bg-[#05070b] px-2 py-2 text-xs text-white">
+              {(operationsByTool[selectedToolId] || []).map(operation => <option key={operation.id} value={operation.id}>{operation.label}</option>)}
+            </select>
+            <button onClick={onManageTools} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200">Conexiones / aprobaciones</button>
+          </div>
+          <textarea value={toolInput} onChange={event => setToolInput(event.target.value)} rows={3} aria-label="Entrada de la herramienta en JSON" className="w-full rounded-lg border border-cyan-950 bg-[#05070b] p-3 font-mono text-[11px] text-gray-200" />
+          <div className="flex items-center justify-between gap-2"><p role="status" className="text-[10px] text-amber-200">{toolNotice || 'Las escrituras se pausan hasta que las apruebes. Los resultados quedan en el historial compartido del departamento.'}</p><button disabled={toolBusy} onClick={runTool} className="rounded-lg bg-cyan-500 px-4 py-2 text-xs font-semibold text-black disabled:opacity-50">{toolBusy ? 'Ejecutando…' : 'Ejecutar'}</button></div>
+        </section>}
 
         {/* Message Viewport */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 font-sans">
