@@ -20,9 +20,9 @@ export type ExecutionResult = {
 function formatPluginsContext(agent: Agent): string {
   const activePlugins = ALL_CHATGPT_WORK_PLUGINS.filter(plugin => agent.enabledPluginIds?.includes(plugin.id));
   if (activePlugins.length === 0) return '';
-  return '\nHerramientas mencionadas para este agente (no disponibles como conectores ejecutables en esta fase):\n'
+  return '\nConectores habilitados en el panel del agente (la persona usuaria inicia cada operación):\n'
     + activePlugins.map(plugin => '- ' + plugin.name + ': ' + plugin.description).join('\n')
-    + '\nNo afirmes haber usado una herramienta externa.\n';
+    + '\nNo afirmes haber ejecutado una operación externa.\n';
 }
 
 function buildAgentPrompt(agent: Agent, userMessage: string, history: { role: 'user' | 'assistant'; content: string }[]) {
