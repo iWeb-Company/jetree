@@ -93,6 +93,8 @@ export type ChatMessage = {
     assignedToAgentId: string;
     assignedToAgentName: string;
     taskSummary: string;
+    provider?: AIProvider;
+    model?: string;
     specialistResult?: string;
   };
 };

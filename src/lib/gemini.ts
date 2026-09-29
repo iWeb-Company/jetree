@@ -7,6 +7,10 @@ export async function analyzeWithGemini(prompt: string, apiKey: string, model: s
     const response = await aiClient.models.generateContent({
       model: model || 'gemini-2.5-flash',
       contents: prompt,
+      config: {
+        maxOutputTokens: 1200,
+        httpOptions: { timeout: 25_000, retryOptions: { attempts: 2, initialDelay: 0.5, maxDelay: 2 } },
+      },
     });
     return response.text;
   } catch (error) {

@@ -14,11 +14,13 @@ export async function analyzeWithClaude(prompt: string, apiKey: string, model: s
         max_tokens: 1024,
         messages: [{ role: 'user', content: prompt }],
       }),
+      signal: AbortSignal.timeout(25_000),
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Anthropic API Error: ${errText}`);
+      const error = new Error('Anthropic request failed.');
+      Object.assign(error, { status: response.status });
+      throw error;
     }
 
     const data = await response.json();

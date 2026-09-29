@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { executeAgentChat } from '@/lib/agents/orchestrator';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { getUserProviderApiKey } from '@/lib/server/provider-secrets';
+import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-adapter';
 import { Agent, AIProvider } from '@/types';
 
 export const runtime = 'nodejs';
@@ -37,6 +38,8 @@ function responseForError(error: unknown) {
 }
 
 export async function POST(request: Request) {
+  let executionService: ReturnType<typeof getServiceSupabase> | null = null;
+  let executionId: string | null = null;
   try {
     const { client, user } = await requireUser(request);
     const body = await request.json();
@@ -89,14 +92,18 @@ export async function POST(request: Request) {
     const apiKeys: Record<string, string> = {};
     for (const provider of providers) {
       const apiKey = await getUserProviderApiKey(user.id, provider);
-      if (!apiKey) {
-        return NextResponse.json(
-          { error: `Configurá una conexión API propia para ${provider} antes de ejecutar este agente.`, provider },
-          { status: 409 },
-        );
-      }
-      apiKeys[provider] = apiKey;
+      if (apiKey) apiKeys[provider] = apiKey;
     }
+    if (!apiKeys[agent.provider]) {
+      return NextResponse.json(
+        { error: `Configurá una conexión API propia para ${agent.provider} antes de ejecutar este agente.`, provider: agent.provider },
+        { status: 409 },
+      );
+    }
+    const executableSubordinates = availableAgents.filter(item => Boolean(apiKeys[item.provider]));
+    agent.subordinateIds = (agent.subordinateIds || []).filter(id =>
+      executableSubordinates.some(item => item.id === id && item.roleType === 'independent'),
+    );
 
     let conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
     if (conversationId) {
@@ -134,40 +141,96 @@ export async function POST(request: Request) {
       .limit(12);
     if (historyError) return NextResponse.json({ error: 'No se pudo cargar el historial de conversación.' }, { status: 500 });
 
+    const dailyLimit = Number(process.env.JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT);
+    if (!Number.isSafeInteger(dailyLimit) || dailyLimit < 1) {
+      return NextResponse.json({ error: 'El límite diario de ejecuciones del workspace no está configurado.' }, { status: 503 });
+    }
+
+    const service = getServiceSupabase();
+    const { data: withinQuota, error: quotaError } = await service.rpc('consume_workspace_execution_quota', { max_runs: dailyLimit });
+    if (quotaError) return NextResponse.json({ error: 'No se pudo verificar el límite del workspace. Aplicá las migraciones requeridas.' }, { status: 503 });
+    if (!withinQuota) return NextResponse.json({ error: 'Se alcanzó el límite diario de ejecuciones del workspace.' }, { status: 429 });
+
+    const { data: execution, error: executionError } = await service.from('agent_executions').insert({
+      user_id: user.id,
+      department_id: agent.departmentId,
+      agent_id: agent.id,
+      conversation_id: conversationId,
+      provider: agent.provider,
+      model: agent.model,
+      status: 'running',
+      input_chars: message.length,
+    }).select('id').single();
+    if (executionError || !execution) {
+      return NextResponse.json({ error: 'No se pudo registrar la ejecución.' }, { status: 500 });
+    }
+    executionService = service;
+    executionId = execution.id;
+
     const { error: userMessageError } = await client.from('messages').insert({
       conversation_id: conversationId,
       author_user_id: user.id,
+      execution_id: executionId,
       role: 'user',
       content: message,
     });
-    if (userMessageError) return NextResponse.json({ error: 'No se pudo guardar el mensaje.' }, { status: 500 });
+    if (userMessageError) throw new AgentEngineError('PERSISTENCE_FAILED');
 
     const history = (priorMessages || []).reverse().flatMap(item => {
       if (!['user', 'assistant'].includes(item.role) || typeof item.content !== 'string') return [];
       return [{ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 6000) }];
     });
 
-    const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys);
-    const service = getServiceSupabase();
+    const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys, undefined, async delegation => {
+      const { error } = await service.from('agent_executions').update({ delegation }).eq('id', executionId);
+      if (error) throw new AgentEngineError('PERSISTENCE_FAILED');
+    });
     const { error: assistantMessageError } = await service.from('messages').insert({
       conversation_id: conversationId,
+      execution_id: executionId,
       role: 'assistant',
       content: result.reply,
       delegation: result.delegation || null,
     });
-    if (assistantMessageError) {
-      return NextResponse.json({ error: 'El agente respondió, pero no se pudo guardar la respuesta compartida.' }, { status: 500 });
-    }
+    if (assistantMessageError) throw new AgentEngineError('PERSISTENCE_FAILED');
+    const { error: completionError } = await service.from('agent_executions').update({
+      status: 'completed',
+      output_chars: result.reply.length,
+      delegation: result.delegation || null,
+      finished_at: new Date().toISOString(),
+    }).eq('id', executionId);
+    if (completionError) throw new AgentEngineError('PERSISTENCE_FAILED');
     await service.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
 
     return NextResponse.json({ ...result, conversationId });
   } catch (error) {
     const code = error instanceof Error ? error.message : '';
+    if (executionService && executionId) {
+      const knownCodes = [
+        'PROVIDER_AUTH_FAILED', 'PROVIDER_RATE_LIMITED', 'PROVIDER_TIMEOUT', 'PROVIDER_UNAVAILABLE', 'PROVIDER_CREDENTIAL_REQUIRED',
+        'PROVIDER_EXECUTION_FAILED', 'MANAGER_DECISION_INVALID', 'DELEGATION_TARGET_NOT_ALLOWED',
+        'AGENT_CONTEXT_TOO_LARGE', 'EMPTY_PROVIDER_RESPONSE', 'PERSISTENCE_FAILED',
+      ];
+      const safeCode = error instanceof AgentEngineError && knownCodes.includes(code)
+        ? code
+        : code === 'MANAGER_DECISION_INVALID' || code === 'DELEGATION_TARGET_NOT_ALLOWED'
+          ? code
+          : 'EXECUTION_FAILED';
+      await executionService.from('agent_executions').update({
+        status: 'failed',
+        error_code: safeCode,
+        finished_at: new Date().toISOString(),
+      }).eq('id', executionId);
+    }
     if (code === 'PROVIDER_CREDENTIAL_REQUIRED') {
       return NextResponse.json({ error: 'Falta una conexión API para el proveedor elegido.' }, { status: 409 });
     }
-    if (code === 'PROVIDER_EXECUTION_FAILED') {
-      return NextResponse.json({ error: 'El proveedor rechazó o no pudo completar la solicitud.' }, { status: 502 });
+    if (error instanceof AgentEngineError) {
+      const status = code === 'PROVIDER_CREDENTIAL_REQUIRED' ? 409 : code === 'AGENT_CONTEXT_TOO_LARGE' ? 413 : code === 'PERSISTENCE_FAILED' ? 500 : 502;
+      return NextResponse.json({ error: providerErrorMessage(code), code }, { status });
+    }
+    if (code === 'MANAGER_DECISION_INVALID' || code === 'DELEGATION_TARGET_NOT_ALLOWED') {
+      return NextResponse.json({ error: providerErrorMessage(code), code }, { status: 502 });
     }
     return responseForError(error);
   }
