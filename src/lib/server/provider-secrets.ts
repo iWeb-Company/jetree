@@ -54,7 +54,7 @@ export async function getUserProviderApiKey(
     .maybeSingle();
 
   if (error) throw new Error('PROVIDER_CONNECTION_LOOKUP_FAILED');
-  if (!connection || connection.status !== 'configured' || connection.connection_type !== 'api_key') return null;
+  if (!connection || !['configured', 'connected'].includes(connection.status) || connection.connection_type !== 'api_key') return null;
 
   const { data: secret, error: secretError } = await service
     .from('provider_connection_secrets')

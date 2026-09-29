@@ -168,9 +168,9 @@ export default function Home() {
             const connection = connections.find((entry: any) => entry.provider === item.provider);
             return {
               ...item,
-              connected: connection?.status === 'configured',
+              connected: connection?.status === 'connected',
               connectedAt: connection?.connected_at,
-              tier: connection?.status === 'configured' ? 'API propia' : undefined,
+              tier: connection?.status === 'connected' ? 'API propia' : undefined,
             };
           }));
         }

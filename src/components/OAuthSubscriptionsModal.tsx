@@ -81,9 +81,30 @@ export default function OAuthSubscriptionsModal({
       if (!response.ok) throw new Error(payload.error || 'No se pudo guardar la conexión.');
       setApiKeys(current => ({ ...current, [provider]: '' }));
       onConnectionChange(provider, true, payload.connection?.connected_at);
-      setFeedback({ provider, message: 'API key cifrada y guardada. Jetree la usará solo en ejecuciones de tu usuario.' });
+      setFeedback({ provider, message: 'Credencial validada y guardada. Jetree la usará solo en ejecuciones de tu usuario.' });
     } catch (error) {
       setFeedback({ provider, message: error instanceof Error ? error.message : 'No se pudo guardar la conexión.', error: true });
+    } finally {
+      setBusyProvider(null);
+    }
+  };
+
+  const validateConnection = async (provider: Provider) => {
+    setBusyProvider(provider);
+    setFeedback(null);
+    try {
+      const response = await fetch('/api/provider-connections', {
+        method: 'POST',
+        headers: { ...(await getAuthHeaders()), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider, action: 'validate' }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo validar la conexión.');
+      onConnectionChange(provider, true, payload.connection?.connected_at);
+      setFeedback({ provider, message: 'La credencial fue validada por el proveedor.' });
+    } catch (error) {
+      onConnectionChange(provider, false);
+      setFeedback({ provider, message: error instanceof Error ? error.message : 'No se pudo validar la conexión.', error: true });
     } finally {
       setBusyProvider(null);
     }
@@ -134,7 +155,7 @@ export default function OAuthSubscriptionsModal({
                     <div className="flex flex-wrap items-center gap-2">
                       <h4 className="text-sm font-semibold text-white">{info.title}</h4>
                       <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] ${connection?.connected ? 'border-emerald-800/40 bg-emerald-950/40 text-emerald-400' : 'border-gray-800 bg-gray-900 text-gray-500'}`}>
-                        {connection?.connected ? 'API key guardada' : 'Sin configurar'}
+                        {connection?.connected ? 'Credencial validada' : connection ? 'Validación pendiente' : 'Sin configurar'}
                       </span>
                     </div>
                     <p className="mt-1 text-xs leading-relaxed text-gray-400">{info.description}</p>
@@ -164,6 +185,11 @@ export default function OAuthSubscriptionsModal({
                       Revocar
                     </button>
                   )}
+                  {connection && !connection.connected && (
+                    <button type="button" disabled={busy} onClick={() => validateConnection(provider)} className="rounded-lg border border-amber-800/50 px-3.5 py-2 text-xs font-semibold text-amber-200 hover:bg-amber-950/30 disabled:opacity-40">
+                      {busy ? 'Validando…' : 'Validar guardada'}
+                    </button>
+                  )}
                 </div>
                 {feedback?.provider === provider && (
                   <p role="status" className={`text-xs ${feedback.error ? 'text-rose-300' : 'text-emerald-300'}`}>{feedback.message}</p>
@@ -174,7 +200,7 @@ export default function OAuthSubscriptionsModal({
         </div>
 
         <div className="rounded-xl border border-cyan-950/60 bg-cyan-950/10 p-3 text-xs leading-relaxed text-gray-400">
-          Las claves se cifran en el servidor y la interfaz nunca vuelve a recibirlas. Guardar una key confirma que quedó almacenada, no que el proveedor ya la validó.
+          Las claves se validan con una consulta de lectura al proveedor antes de guardarse, se cifran en el servidor y la interfaz nunca vuelve a recibirlas. Esto confirma que la credencial es aceptada para consultar modelos; cuota, facturación y disponibilidad pueden cambiar después.
         </div>
         <div className="flex justify-end border-t border-cyan-950/60 pt-3">
           <button onClick={onClose} className="rounded-xl bg-gray-900 px-4 py-2 text-xs font-medium text-white hover:bg-gray-800">Cerrar</button>
