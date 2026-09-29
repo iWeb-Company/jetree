@@ -138,7 +138,7 @@ export async function POST(request: Request) {
   if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
   try {
     const service = getServiceSupabase();
-    const { data, error } = await service.rpc('claim_telegram_updates', { batch_size: 10 });
+    const { data, error } = await service.rpc('claim_telegram_updates', { batch_size: 2 });
     if (error) return NextResponse.json({ error: 'Queue unavailable.' }, { status: 503 });
     for (const update of data || []) await processUpdate(service, update);
     return NextResponse.json({ processed: data?.length || 0 });
