@@ -5,7 +5,8 @@ import { encryptProviderSecret } from '@/lib/server/provider-secrets';
 
 const jsonError = (message: string, status: number) => NextResponse.json({ error: message }, { status });
 
-export async function GET(request: Request, { params }: { params: { agentId: string } }) {
+export async function GET(request: Request, { params: promisedParams }: { params: Promise<{ agentId: string }> }) {
+  const params = await promisedParams;
   try {
     const { client } = await requireUser(request);
     const { data: agent } = await client.from('agents').select('id').eq('id', params.agentId).maybeSingle();
@@ -20,7 +21,8 @@ export async function GET(request: Request, { params }: { params: { agentId: str
   }
 }
 
-export async function POST(request: Request, { params }: { params: { agentId: string } }) {
+export async function POST(request: Request, { params: promisedParams }: { params: Promise<{ agentId: string }> }) {
+  const params = await promisedParams;
   try {
     const { client, user } = await requireUser(request);
     const { data: agent } = await client.from('agents').select('id').eq('id', params.agentId).maybeSingle();
@@ -59,7 +61,8 @@ export async function POST(request: Request, { params }: { params: { agentId: st
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { agentId: string } }) {
+export async function DELETE(request: Request, { params: promisedParams }: { params: Promise<{ agentId: string }> }) {
+  const params = await promisedParams;
   try {
     const { client } = await requireUser(request);
     const { data: agent } = await client.from('agents').select('id').eq('id', params.agentId).maybeSingle();

@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Jetree is a Next.js 14 App Router application using React 18, TypeScript, and Tailwind CSS.
+Jetree is a Next.js 15 App Router application using React 19, TypeScript, and Tailwind CSS.
 
 - `src/app/`: root page, layout, global styles, and API routes for agents, chat, and Telegram webhooks.
 - `src/components/`: dashboard UI, including agent cards, department trees, task boards, and configuration modals.

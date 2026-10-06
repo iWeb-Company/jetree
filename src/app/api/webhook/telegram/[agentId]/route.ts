@@ -4,7 +4,8 @@ import { extractTelegramTextUpdate, verifyTelegramSecret } from '@/lib/telegram-
 
 export const runtime = 'nodejs';
 
-export async function POST(request: Request, { params }: { params: { agentId: string } }) {
+export async function POST(request: Request, { params: promisedParams }: { params: Promise<{ agentId: string }> }) {
+  const params = await promisedParams;
   const service = getServiceSupabase();
   const { data: bot, error } = await service.from('telegram_bots').select('id,secret_hash').eq('agent_id', params.agentId).eq('is_active', true).maybeSingle();
   if (error) return NextResponse.json({ error: 'Webhook unavailable.' }, { status: 503 });
