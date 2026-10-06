@@ -30,7 +30,7 @@ export default function AgentModal({
   const [departmentId, setDepartmentId] = useState(agentToEdit?.departmentId || departments[0]?.id || 'ai-dev');
   const [roleType, setRoleType] = useState<AgentRoleType>(agentToEdit?.roleType || 'independent');
   const [provider, setProvider] = useState<AIProvider>(agentToEdit?.provider || 'gemini');
-  const [model, setModel] = useState(agentToEdit?.model || 'gemini-2.5-flash');
+  const [model, setModel] = useState(agentToEdit?.model || 'gemini-3.5-flash-lite');
   const [systemPrompt, setSystemPrompt] = useState(
     agentToEdit?.systemPrompt || 'Eres un asistente especialista en...'
   );
@@ -73,8 +73,8 @@ export default function AgentModal({
     switch (prov) {
       case 'gemini':
         return [
-          { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Ultrarrápido & Multimodal)' },
-          { value: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro (Razonamiento Complejo & Gran Contexto)' },
+          { value: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite' },
+          { value: 'gemini-3.8-flash', label: 'Gemini 3.8 Flash' },
         ];
       case 'openai':
         return [
