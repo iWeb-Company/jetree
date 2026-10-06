@@ -2,7 +2,8 @@ name: Verify Jetree
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, dev]
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -19,7 +20,12 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm test
+      - name: Verify deployment failure and rollback behavior
+        run: |
+          bash -n scripts/deploy-vps.sh scripts/deploy-ssh.sh tests/integration/deploy-rollback.sh
+          sudo --preserve-env=CI,GITHUB_ACTIONS bash tests/integration/deploy-rollback.sh
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build

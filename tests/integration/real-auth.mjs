@@ -6,7 +6,10 @@ import { chromium } from '@playwright/test';
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const origin = process.env.JETREE_APP_URL;
-assert.equal(new URL(url).hostname, 'lgimqhuohkjtwfxbaecb.supabase.co');
+if (process.env.JETREE_DISPOSABLE_CI === 'true') {
+  assert.equal(process.env.CI, 'true');
+  assert.equal(url, 'http://127.0.0.1:54321');
+} else assert.equal(new URL(url).hostname, 'lgimqhuohkjtwfxbaecb.supabase.co');
 assert.equal(new URL(origin).hostname, '127.0.0.1');
 const options = { auth: { persistSession: false, autoRefreshToken: false } };
 const service = createClient(url, process.env.SUPABASE_SERVICE_ROLE_KEY, options);
