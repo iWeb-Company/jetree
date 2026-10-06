@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "node --import tsx --test tests/**/*.test.ts",
-    "test:e2e": "node tests/integration/real-auth.mjs"
+    "test:e2e": "node tests/integration/real-auth.mjs",
+    "test:e2e:live": "node tests/integration/live-provider-telegram.mjs"
   },
   "dependencies": {
     "@google/genai": "latest",

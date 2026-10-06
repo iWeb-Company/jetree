@@ -98,11 +98,18 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       const { error: linkError } = await service.from('telegram_chat_sessions').upsert({ bot_id: bot.id, chat_id: update.chat_id, conversation_id: conversationId }, { onConflict: 'bot_id,chat_id' });
       if (linkError) throw new Error('CHAT_SESSION_SAVE_FAILED');
     }
-    const { error: messageError } = await service.from('messages').upsert({
+    const { error: messageError } = await service.from('messages').insert({
       conversation_id: conversationId, author_user_id: null, role: 'user', content: update.message_text,
       telegram_update_id: update.id,
-    }, { onConflict: 'telegram_update_id', ignoreDuplicates: true });
-    if (messageError) throw new Error('MESSAGE_SAVE_FAILED');
+    });
+    if (messageError) {
+      // PostgREST cannot infer the partial unique index for an upsert.
+      // Accept a duplicate only when this exact update already has a message.
+      if (messageError.code !== '23505') throw new Error('MESSAGE_SAVE_FAILED');
+      const { data: existingMessage, error: duplicateError } = await service.from('messages')
+        .select('id').eq('telegram_update_id', update.id).maybeSingle();
+      if (duplicateError || !existingMessage) throw new Error('MESSAGE_SAVE_FAILED');
+    }
     const { data: historyRows } = await service.from('messages').select('role,content,telegram_update_id').eq('conversation_id', conversationId).order('created_at', { ascending: true }).limit(40);
     const history = (historyRows || []).filter((row: any) => row.telegram_update_id !== update.id).slice(-20)
       .map((row: any) => ({ role: row.role as 'user'|'assistant', content: row.content }));
