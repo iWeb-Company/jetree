@@ -66,6 +66,7 @@ jobs:
         run: |
           psql -X -v ON_ERROR_STOP=1 -f tests/database/isolation.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-isolation.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/function-permissions.sql
       - name: Replay the audited existing schema and reconcile
         run: |
           psql -X -v ON_ERROR_STOP=1 -c 'create database jetree_replay'
@@ -74,8 +75,11 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-001-fixture.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/seed-existing.sql
           psql -X -v ON_ERROR_STOP=1 --single-transaction -f supabase/reconciliation/20261006145142_reconcile_existing_001.sql
-          for migration in supabase/migrations/00[2-8]*.sql; do
+          for migration in supabase/migrations/*.sql; do
+            [[ $(basename "$migration") == 001* ]] && continue
             psql -X -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
           done
           psql -X -v ON_ERROR_STOP=1 -f tests/database/verify-seed.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/function-permissions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-isolation.sql
 
