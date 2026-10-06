@@ -1,0 +1,41 @@
+name: Verify real Auth and browser
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  isolated-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start disposable Supabase with repository migrations
+        run: |
+          mkdir -p "$RUNNER_TEMP/jetree-supabase"
+          npx --yes supabase@2.120.0 init --workdir "$RUNNER_TEMP/jetree-supabase"
+          cp -r supabase/migrations "$RUNNER_TEMP/jetree-supabase/supabase/"
+          npx --yes supabase@2.120.0 start --workdir "$RUNNER_TEMP/jetree-supabase"
+          npx --yes supabase@2.120.0 status --workdir "$RUNNER_TEMP/jetree-supabase" -o json > "$RUNNER_TEMP/jetree-local-status.json"
+      - name: Prepare temporary isolated Auth configuration
+        run: node scripts/ci-auth-env.mjs
+      - run: npm run build
+      - name: Verify Auth, department isolation and agent creation in browser
+        run: |
+          npm start -- --hostname 127.0.0.1 --port 3057 > "$RUNNER_TEMP/jetree-e2e-server.log" 2>&1 &
+          pid=$!
+          trap 'kill "$pid"' EXIT
+          node tests/integration/auth-smoke.mjs
+          node tests/integration/real-auth.mjs
+          node tests/integration/agent-form.mjs
+      - name: Stop disposable database
+        if: always()
+        run: npx --yes supabase@2.120.0 stop --workdir "$RUNNER_TEMP/jetree-supabase" --no-backup
