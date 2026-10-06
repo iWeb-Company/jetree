@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+.env*
+*.env
+*.dump*
+*.dpapi
+work*
+outputs
+secrets
+backups
+*.pem
+*.key
+tsconfig.tsbuildinfo
