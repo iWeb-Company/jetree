@@ -5,7 +5,10 @@ import { chromium } from '@playwright/test';
 
 const origin = process.env.JETREE_APP_URL;
 assert.equal(new URL(origin).hostname, '127.0.0.1');
-assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, 'lgimqhuohkjtwfxbaecb.supabase.co');
+if (process.env.JETREE_DISPOSABLE_CI === 'true') {
+  assert.equal(process.env.CI, 'true');
+  assert.equal(process.env.NEXT_PUBLIC_SUPABASE_URL, 'http://127.0.0.1:54321');
+} else assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, 'lgimqhuohkjtwfxbaecb.supabase.co');
 const service = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 const run = randomUUID();
 const email = `jetree-form-${run}@example.invalid`;

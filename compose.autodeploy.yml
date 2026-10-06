@@ -1,0 +1,17 @@
+# Install a reviewed copy per environment. Production retains project 'jetree'.
+services:
+  app:
+    image: ${JETREE_IMAGE:?Required immutable image}
+    env_file: ${JETREE_RUNTIME_FILE:?Required protected server configuration}
+    ports:
+      - '127.0.0.1:${JETREE_HOST_PORT:?Required isolated port}:3000'
+    restart: unless-stopped
+    init: true
+    cpus: 2
+    mem_limit: 1g
+    pids_limit: 150
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }

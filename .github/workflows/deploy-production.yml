@@ -1,0 +1,23 @@
+name: Deploy production
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  application:
+    uses: ./.github/workflows/verify.yml
+  container:
+    uses: ./.github/workflows/container.yml
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+  deploy:
+    needs: [application, container, e2e]
+    if: vars.AUTODEPLOY_PRODUCTION == 'true'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: production
+    secrets: inherit

@@ -1,0 +1,49 @@
+name: Deliver verified image
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: ${{ inputs.environment }}
+    env:
+      TARGET: ${{ inputs.environment }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate environment and isolated database
+        shell: bash
+        run: |
+          set -eu
+          test "$TARGET" = dev || test "$TARGET" = production
+          if [ "$TARGET" = production ]; then test "$GITHUB_REF_NAME" = main; else test "$GITHUB_REF_NAME" = dev; fi
+          test -n "$NEXT_PUBLIC_SUPABASE_ANON_KEY"
+          test -n "$DEPLOY_HOST"
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
+          node --input-type=module -e 'const u=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL); if(u.protocol!=="https:"||!u.hostname.endsWith(".supabase.co")||(process.env.TARGET==="dev"&&u.hostname==="lgimqhuohkjtwfxbaecb.supabase.co"))process.exit(1)'
+      - name: Build immutable environment image
+        run: |
+          docker build --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "jetree.environment=$TARGET" --label "jetree.schema=$(sha256sum supabase/migrations/*.sql | sha256sum | cut -d' ' -f1)" -t "jetree:$TARGET-$GITHUB_SHA" .
+      - name: Deliver through restricted SSH and verify or roll back
+        env:
+          DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS"
+          install -d -m 700 "$RUNNER_TEMP/jetree-ssh"
+          trap 'rm -f "$RUNNER_TEMP/jetree-ssh/key" "$RUNNER_TEMP/jetree-ssh/known_hosts"' EXIT
+          printf '%s\n' "$DEPLOY_KEY" > "$RUNNER_TEMP/jetree-ssh/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/jetree-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/jetree-ssh/"*
+          docker save "jetree:$TARGET-$GITHUB_SHA" | gzip | ssh -T -i "$RUNNER_TEMP/jetree-ssh/key" -p "$DEPLOY_PORT" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$RUNNER_TEMP/jetree-ssh/known_hosts" "jetree-deploy@$DEPLOY_HOST" "$TARGET $GITHUB_SHA"
