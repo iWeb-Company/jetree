@@ -1,0 +1,42 @@
+name: jetree
+services:
+  app:
+    image: jetree:${JETREE_RELEASE:?Set an immutable release tag}
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?Required public build URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?Required public build key}
+    env_file: /opt/jetree/secrets/runtime.env
+    ports:
+      - "127.0.0.1:3028:3000"
+    restart: unless-stopped
+    init: true
+    cpus: 2
+    mem_limit: 1g
+    pids_limit: 150
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+  worker:
+    image: jetree:${JETREE_RELEASE:?Set an immutable release tag}
+    profiles: [worker]
+    command: [node, scripts/telegram-scheduler.mjs]
+    env_file: /opt/jetree/secrets/worker.env
+    environment:
+      JETREE_WORKER_INTERVAL_SECONDS: "60"
+    depends_on:
+      app: { condition: service_healthy }
+    healthcheck: { disable: true }
+    restart: unless-stopped
+    init: true
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 30
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }

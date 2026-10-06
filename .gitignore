@@ -24,3 +24,14 @@ yarn-error.log*
 
 #local env files
 .env*.local
+
+# VPS secrets and backups stay outside the checkout.
+.env
+.env.*
+!.env.example
+*.env
+/secrets/
+/backups/
+*.dump*
+*.dpapi
+*.key

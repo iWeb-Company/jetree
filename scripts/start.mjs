@@ -1,0 +1,11 @@
+import { readFileSync } from 'node:fs';
+const required = ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'JETREE_CREDENTIALS_ENCRYPTION_KEY', 'JETREE_TELEGRAM_WORKER_SECRET', 'JETREE_APP_URL'];
+if (required.some(name => !process.env[name])) throw new Error('Missing server configuration');
+const built = JSON.parse(readFileSync(new URL('../public-config.json', import.meta.url)));
+if (built.url !== process.env.NEXT_PUBLIC_SUPABASE_URL || built.key !== process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) throw new Error('Public configuration differs from build; rebuild required');
+if (Buffer.from(process.env.JETREE_CREDENTIALS_ENCRYPTION_KEY, 'base64').length !== 32) throw new Error('Invalid encryption key configuration');
+if (process.env.JETREE_TELEGRAM_WORKER_SECRET.length < 32) throw new Error('Invalid worker secret configuration');
+const limit = Number(process.env.JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT);
+if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Invalid daily execution limit');
+if (new URL(process.env.JETREE_APP_URL).protocol !== 'https:') throw new Error('Public app URL must use HTTPS');
+await import('../server.js');

@@ -1,0 +1,82 @@
+name: Verify VPS container
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  container:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-ci-key
+      JETREE_RELEASE: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build production container with public synthetic configuration
+        run: docker build --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY -t jetree:ci .
+      - name: Create synthetic server configuration and validate Compose
+        run: |
+          sudo install -d -m 700 /opt/jetree/secrets
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const secret = crypto.randomBytes(32).toString('hex');
+          const values = {
+            NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+            NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+            SUPABASE_SERVICE_ROLE_KEY: 'synthetic-ci-service-key',
+            JETREE_CREDENTIALS_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64'),
+            JETREE_TELEGRAM_WORKER_SECRET: secret,
+            JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT: '20',
+            JETREE_APP_URL: 'https://jetree.example.invalid',
+          };
+          fs.writeFileSync('/tmp/jetree-ci.env', Object.entries(values).map(([k,v]) => `${k}=${v}`).join('\n')+'\n', {mode:0o600});
+          fs.writeFileSync('/tmp/jetree-worker-ci.env', `JETREE_TELEGRAM_WORKER_SECRET=${secret}\n`, {mode:0o600});
+          JS
+          sudo cp /tmp/jetree-ci.env /opt/jetree/secrets/runtime.env
+          sudo cp /tmp/jetree-worker-ci.env /opt/jetree/secrets/worker.env
+          sudo --preserve-env=NEXT_PUBLIC_SUPABASE_URL,NEXT_PUBLIC_SUPABASE_ANON_KEY,JETREE_RELEASE docker compose -f compose.vps.yml config --quiet
+      - name: Verify non-root runtime, health and authentication boundaries
+        run: |
+          docker run -d --name jetree-ci --env-file /tmp/jetree-ci.env -p 127.0.0.1:3057:3000 jetree:ci
+          trap 'docker rm -f jetree-ci >/dev/null' EXIT
+          for attempt in $(seq 1 30); do
+            if docker exec jetree-ci node scripts/healthcheck.mjs; then break; fi
+            sleep 2
+          done
+          docker exec jetree-ci node scripts/healthcheck.mjs
+          test "$(docker exec jetree-ci id -u)" = 1000
+          node tests/integration/auth-smoke.mjs
+          curl --fail --silent http://127.0.0.1:3057/api/health
+      - name: Verify missing configuration fails closed
+        run: |
+          if docker run --rm jetree:ci; then
+            echo 'Unconfigured container unexpectedly started'
+            exit 1
+          fi
+      - name: Verify scheduler authentication and graceful shutdown with synthetic transport
+        run: |
+          docker network create jetree-scheduler-ci
+          trap 'docker rm -f scheduler-ci app >/dev/null 2>&1; docker network rm jetree-scheduler-ci >/dev/null' EXIT
+          docker run -d --no-healthcheck --name app --network jetree-scheduler-ci --env-file /tmp/jetree-worker-ci.env jetree:ci node -e "require('http').createServer((q,r)=>{if(q.method!=='POST'||q.url!=='/api/telegram/worker'||q.headers['x-jetree-worker-secret']!==process.env.JETREE_TELEGRAM_WORKER_SECRET)process.exit(1);console.log('authenticated-call');setTimeout(()=>{r.setHeader('Content-Type','application/json');r.end(JSON.stringify({processed:0}));},1500);}).listen(3000,'0.0.0.0')"
+          for attempt in $(seq 1 30); do
+            if docker exec app node -e "const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),1000)"; then break; fi
+            sleep 1
+          done
+          docker exec app node -e "const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),1000)"
+          docker run -d --init --no-healthcheck --name scheduler-ci --network jetree-scheduler-ci --env-file /tmp/jetree-worker-ci.env -e JETREE_WORKER_INTERVAL_SECONDS=10 jetree:ci node scripts/telegram-scheduler.mjs
+          for attempt in $(seq 1 45); do
+            count=$(docker logs app 2>&1 | grep -c authenticated-call || true)
+            if [ "$count" -ge 2 ]; then break; fi
+            sleep 2
+          done
+          docker logs app
+          docker logs scheduler-ci
+          test "$count" -ge 2
+          docker stop --time 10 scheduler-ci
+          test "$(docker inspect --format '{{.State.ExitCode}}' scheduler-ci)" = 0
