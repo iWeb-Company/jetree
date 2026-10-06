@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Agent, Department, AgentRoleType, AIProvider, UserSubscription } from '@/types';
 import { ALL_CHATGPT_WORK_PLUGINS, PLUGIN_CATEGORIES, PluginCategory } from '@/lib/agents/plugins';
 
@@ -27,7 +27,7 @@ export default function AgentModal({
 }: AgentModalProps) {
   const [name, setName] = useState(agentToEdit?.name || '');
   const [description, setDescription] = useState(agentToEdit?.description || '');
-  const [departmentId, setDepartmentId] = useState(agentToEdit?.departmentId || departments[0]?.id || 'ai-dev');
+  const [departmentId, setDepartmentId] = useState(agentToEdit?.departmentId || '');
   const [roleType, setRoleType] = useState<AgentRoleType>(agentToEdit?.roleType || 'independent');
   const [provider, setProvider] = useState<AIProvider>(agentToEdit?.provider || 'gemini');
   const [model, setModel] = useState(agentToEdit?.model || 'gemini-3.5-flash-lite');
@@ -50,6 +50,14 @@ export default function AgentModal({
   const [pluginSearchQuery, setPluginSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) setDepartmentId(agentToEdit?.departmentId || '');
+  }, [isOpen, agentToEdit]);
+
+  const selectedDepartmentId = departments.some(department => department.id === departmentId)
+    ? departmentId
+    : departments[0]?.id || '';
 
   // Filtrado reactivo de plugins según categoría y búsqueda
   const filteredPlugins = useMemo(() => {
@@ -125,13 +133,14 @@ export default function AgentModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedDepartmentId) { setSaveError('Seleccioná un departamento disponible.'); return; }
     if (!name.trim() || (provider === 'custom' && (!model.trim() || model === 'custom-model'))) return;
 
     const newAgent: Agent = {
       id: agentToEdit?.id || `agent-${Date.now()}`,
       name: name.trim(),
       description: description.trim(),
-      departmentId,
+      departmentId: selectedDepartmentId,
       roleType,
       subordinateIds: roleType === 'manager' ? selectedSubordinates : undefined,
       provider,
@@ -157,7 +166,7 @@ export default function AgentModal({
   };
 
   const availablePotentialSubordinates = existingAgents.filter(
-    a => a.id !== agentToEdit?.id && a.departmentId === departmentId
+    a => a.id !== agentToEdit?.id && a.departmentId === selectedDepartmentId
   );
 
   return (
@@ -249,7 +258,7 @@ export default function AgentModal({
                     Departamento
                   </label>
                   <select
-                    value={departmentId}
+                    value={selectedDepartmentId}
                     onChange={e => setDepartmentId(e.target.value)}
                     className="w-full bg-[#05070b] border border-cyan-950 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-500 transition-all"
                   >
