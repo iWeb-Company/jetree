@@ -7,7 +7,7 @@ assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname,'lgimqhuohkj
 const options={auth:{persistSession:false,autoRefreshToken:false}};
 const service=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,options);
 const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,options);
-const run=randomUUID();let user,dep,token,connected=false;
+const run=randomUUID();let user,dep,token,connected=false;const extraUsers=[];
 function db(r,label){assert.equal(r.error,null,label);return r.data;}
 async function api(path,method='GET',body){const r=await fetch(origin+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(180000)});return {status:r.status,body:await r.json()};}
 try {
@@ -55,6 +55,18 @@ try {
  db(await service.from('telegram_bots').update(encrypt(process.env.JETREE_E2E_TELEGRAM_BOT_TOKEN)).eq('id',bot.id),'restore test bot credential');db(await service.from('telegram_updates').update({next_attempt_at:new Date(0).toISOString()}).eq('id',retry.id),'advance only synthetic retry');await worker();assert.equal(db(await service.from('telegram_updates').select('status').eq('id',retry.id).single(),'recovered delivery').status,'completed');const afterRetry=db(await service.from('agent_executions').select('id').eq('user_id',user.id),'execution count after delivery retry');assert.equal(afterRetry.length,2);console.log('PASS delivery failure, backoff and recovery without repeated inference');
  const terminal=db(await service.from('telegram_updates').insert({bot_id:bot.id,agent_id:agent.id,update_id:updateId+2,chat_id:target.chatId,message_text:'Synthetic terminal failure',response_text:'Synthetic terminal failure',status:'delivery_pending',attempts:4,task_id:update.task_id}).select('id').single(),'terminal fixture');db(await service.from('telegram_bots').update(encrypt('000000:synthetic_invalid_token')).eq('id',bot.id),'terminal failure injection');await worker();assert.equal(db(await service.from('telegram_updates').select('status,attempts').eq('id',terminal.id).single(),'terminal status').status,'failed');assert.equal(db(await service.from('tasks').select('status').eq('id',update.task_id).single(),'terminal task').status,'failed');console.log('PASS fifth failed attempt is terminal and task is failed');
 
+
+ db(await service.from('telegram_bots').update(encrypt(process.env.JETREE_E2E_TELEGRAM_BOT_TOKEN)).eq('id',bot.id),'restore valid test bot');
+ async function expectGuard(updateNumber,code){
+   const record=db(await service.from('telegram_updates').insert({bot_id:bot.id,agent_id:agent.id,update_id:updateNumber,chat_id:target.chatId,message_text:'Synthetic blocked delivery',response_text:'Must never be sent',status:'delivery_pending'}).select('id').single(),'guard fixture');
+   await worker();const blocked=db(await service.from('telegram_updates').select('status,last_error').eq('id',record.id).single(),'guard result');assert.equal(blocked.status,'failed');assert.equal(blocked.last_error,code);
+ }
+ db(await service.from('agents').update({deleted_at:new Date().toISOString()}).eq('id',agent.id),'archive synthetic agent');await expectGuard(updateId+3,'AGENT_OR_DEPARTMENT_ARCHIVED');db(await service.from('agents').update({deleted_at:null}).eq('id',agent.id),'restore synthetic agent');
+ db(await service.from('departments').update({deleted_at:new Date().toISOString()}).eq('id',dep),'archive synthetic department');await expectGuard(updateId+4,'AGENT_OR_DEPARTMENT_ARCHIVED');db(await service.from('departments').update({deleted_at:null}).eq('id',dep),'restore synthetic department');
+ const foreign=db(await service.auth.admin.createUser({email:'jetree-e2e-foreign-'+run+'@example.invalid',password:randomBytes(32).toString('base64url')+'!Aa1',email_confirm:true}),'foreign synthetic owner').user;extraUsers.push(foreign.id);
+ db(await service.from('telegram_bots').update({owner_user_id:foreign.id}).eq('id',bot.id),'set unassigned synthetic owner');await expectGuard(updateId+5,'BOT_OWNER_ACCESS_REVOKED');
+ db(await service.from('department_members').insert({department_id:dep,user_id:foreign.id}),'grant synthetic membership');db(await service.from('department_members').delete().eq('department_id',dep).eq('user_id',foreign.id),'revoke synthetic membership');await expectGuard(updateId+6,'BOT_OWNER_ACCESS_REVOKED');
+ db(await service.from('telegram_bots').update({owner_user_id:user.id}).eq('id',bot.id),'restore synthetic owner');console.log('PASS worker blocks archived agents/departments, foreign owners and revoked members before delivery');
  const revoke=await api('/api/provider-connections?provider=gemini','DELETE',{provider:'gemini'});assert.equal(revoke.status,200);connected=false;const denied=await api('/api/agents/chat','POST',{agentId:agent.id,message:'Synthetic post-revocation denial'});assert.equal(denied.status,409);console.log('PASS provider revocation blocks new inference');
 } catch(e){console.error(e instanceof assert.AssertionError?e.message:'Live test failed; sensitive details suppressed');process.exitCode=1;} finally {
  if(connected)await api('/api/provider-connections','DELETE',{provider:'gemini'}).catch(()=>{});
@@ -62,5 +74,6 @@ try {
  if(user){for(const table of ['tasks','activity_logs'])db(await service.from(table).delete().eq(table==='tasks'?'created_by':'user_id',user.id),'cleanup '+table);}
  if(dep)db(await service.from('departments').delete().eq('id',dep),'cleanup department');
  if(user)db(await service.auth.admin.deleteUser(user.id),'cleanup Auth');
+ for(const id of extraUsers)db(await service.auth.admin.deleteUser(id),'cleanup foreign Auth');
  console.log('Synthetic Gemini fixtures removed');
 }
