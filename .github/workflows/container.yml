@@ -64,12 +64,14 @@ jobs:
           docker network create jetree-scheduler-ci
           trap 'docker rm -f scheduler-ci app >/dev/null 2>&1; docker network rm jetree-scheduler-ci >/dev/null' EXIT
           docker run -d --name app --network jetree-scheduler-ci --env-file /tmp/jetree-worker-ci.env jetree:ci node -e "require('http').createServer((q,r)=>{if(q.method!=='POST'||q.url!=='/api/telegram/worker'||q.headers['x-jetree-worker-secret']!==process.env.JETREE_TELEGRAM_WORKER_SECRET)process.exit(1);console.log('authenticated-call');setTimeout(()=>{r.setHeader('Content-Type','application/json');r.end(JSON.stringify({processed:0}));},1500);}).listen(3000,'0.0.0.0')"
-          docker run -d --name scheduler-ci --network jetree-scheduler-ci --env-file /tmp/jetree-worker-ci.env -e JETREE_WORKER_INTERVAL_SECONDS=10 jetree:ci node scripts/telegram-scheduler.mjs
+          docker run -d --init --name scheduler-ci --network jetree-scheduler-ci --env-file /tmp/jetree-worker-ci.env -e JETREE_WORKER_INTERVAL_SECONDS=10 jetree:ci node scripts/telegram-scheduler.mjs
           for attempt in $(seq 1 20); do
             count=$(docker logs app 2>&1 | grep -c authenticated-call || true)
             if [ "$count" -ge 2 ]; then break; fi
             sleep 2
           done
+          docker logs app
+          docker logs scheduler-ci
           test "$count" -ge 2
           docker stop --time 10 scheduler-ci
           test "$(docker inspect --format '{{.State.ExitCode}}' scheduler-ci)" = 0
