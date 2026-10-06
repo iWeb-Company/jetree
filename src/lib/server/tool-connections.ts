@@ -10,7 +10,10 @@ export function appBaseUrl(): string {
   const value = process.env.JETREE_APP_URL;
   if (!value) throw new Error('TOOL_OAUTH_NOT_CONFIGURED');
   const url = new URL(value);
-  if (url.protocol !== 'https:' && url.hostname !== 'localhost') throw new Error('TOOL_OAUTH_NOT_CONFIGURED');
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (url.username || url.password || (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))) {
+    throw new Error('TOOL_OAUTH_NOT_CONFIGURED');
+  }
   return url.origin;
 }
 
