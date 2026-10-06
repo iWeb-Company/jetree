@@ -4,6 +4,7 @@ import { getServiceSupabase } from '@/lib/server/auth';
 import { decryptProviderSecret, getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import { executeAgentChat } from '@/lib/agents/orchestrator';
 import type { Agent } from '@/types';
+import { assertTelegramOwnerAccess, reserveTelegramExecution } from '@/lib/telegram-worker-guards';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -35,7 +36,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
   const fail = async (error: unknown, taskId?: string) => {
     const rawReason = error instanceof Error ? error.message : '';
     const reason = /^[A-Z0-9_]{1,80}$/.test(rawReason) ? rawReason : 'EXECUTION_FAILED';
-    const terminal = attempt >= MAX_ATTEMPTS;
+    const terminal = attempt >= MAX_ATTEMPTS || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH'].includes(reason);
     await service.from('telegram_updates').update({
       status: terminal ? 'failed' : (update.status === 'delivery_pending' ? 'delivery_pending' : 'pending'),
       attempts: attempt, next_attempt_at: backoff(attempt), locked_at: null,
@@ -53,6 +54,18 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       service.from('agents').select('*').eq('id', update.agent_id).single(),
     ]);
     if (botError || agentError || !bot || !agentRow) throw new Error('BOT_OR_AGENT_UNAVAILABLE');
+    if (bot.agent_id !== agentRow.id) throw new Error('BOT_AGENT_MISMATCH');
+    const [departmentResult, profileResult, membershipResult] = await Promise.all([
+      service.from('departments').select('created_by,deleted_at').eq('id', agentRow.department_id).single(),
+      service.from('profiles').select('role').eq('id', bot.owner_user_id).maybeSingle(),
+      service.from('department_members').select('user_id').eq('department_id', agentRow.department_id).eq('user_id', bot.owner_user_id).maybeSingle(),
+    ]);
+    if (departmentResult.error || profileResult.error || membershipResult.error || !departmentResult.data) throw new Error('BOT_OWNER_ACCESS_CHECK_FAILED');
+    assertTelegramOwnerAccess({
+      profileRole: profileResult.data?.role || null, ownerId: bot.owner_user_id,
+      departmentCreatorId: departmentResult.data.created_by, isMember: Boolean(membershipResult.data),
+      agentArchived: Boolean(agentRow.deleted_at), departmentArchived: Boolean(departmentResult.data.deleted_at),
+    });
     const token = decryptProviderSecret({ ciphertext: bot.token_ciphertext, iv: bot.token_iv, auth_tag: bot.token_auth_tag });
 
     if (update.status === 'delivery_pending' && update.response_text) {
@@ -118,6 +131,10 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       const key = await getUserProviderApiKey(bot.owner_user_id, provider);
       if (key) apiKeys[provider] = key;
     }
+    await reserveTelegramExecution(process.env.JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT, async maxRuns => {
+      const { data, error } = await service.rpc('consume_workspace_execution_quota', { max_runs: maxRuns });
+      return { data, error };
+    });
     const result = await executeAgentChat(agent, update.message_text, roster, history, apiKeys);
     const responseText = result.delegation
       ? `${agent.name}: ${result.delegation.specialistResult || result.reply}`
