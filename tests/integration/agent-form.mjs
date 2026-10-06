@@ -28,6 +28,7 @@ try {
   await page.getByRole('button', { name: /Crear Nuevo Agente/ }).click();
   const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Crear y Activar Agente' }) });
   await form.locator('input').first().fill(`Agent-${run}`);
+  await form.getByPlaceholder('Ej. Experto en UX/UI, análisis heurístico y prototipado').fill('Synthetic regression fixture');
   assert.equal(await form.locator('select').first().inputValue(), departmentId);
   // Do not change the department selector: this reproduces the initial-state bug.
   const saved = page.waitForResponse(response => response.url().endsWith('/api/agents') && response.request().method() === 'POST');
@@ -35,7 +36,10 @@ try {
   const response = await saved;
   assert.equal(response.status(), 201);
   assert.equal((await response.json()).agent.department_id, departmentId);
+  console.log('PASS untouched department selector saves the real UUID');
   await page.reload();
+  await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 60000 });
+  await page.getByRole('button', { name: 'Agentes IA', exact: true }).click();
   await page.getByText(`Agent-${run}`, { exact: true }).first().waitFor({ timeout: 60000 });
   if (process.env.JETREE_UI_SCREENSHOT) await page.screenshot({ path: process.env.JETREE_UI_SCREENSHOT, fullPage: true });
   await page.getByRole('button', { name: 'Cerrar Sesión' }).click();
