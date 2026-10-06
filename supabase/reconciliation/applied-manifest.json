@@ -1,0 +1,55 @@
+{
+  "migrations": [
+    {
+      "file": "supabase/reconciliation/20261006145142_reconcile_existing_001.sql",
+      "sha256": "6791eccb736ab1fc3f92c573dd3b4e2df697d16571cbfe8e272a79e37560aeb0",
+      "version": "20261006152144",
+      "name": "reconcile_existing_001"
+    },
+    {
+      "file": "supabase/migrations/002_provider_credential_vault.sql",
+      "sha256": "1fcc0acdc43c2ee29f6673a11e903dcc2aa3dd843be3e8152182db5b35a6b495",
+      "version": "20261006152227",
+      "name": "legacy_002_provider_credential_vault"
+    },
+    {
+      "file": "supabase/migrations/003_shared_conversations.sql",
+      "sha256": "d2a9ec556f84bc1dcc492fdb2f747f77f64099e6bc64bd1b3d6ddcb3e018a8e9",
+      "version": "20261006152336",
+      "name": "legacy_003_shared_conversations"
+    },
+    {
+      "file": "supabase/migrations/004_app_data_permissions.sql",
+      "sha256": "8869a8a83ce6c732a58b54133217faa64a2e5c9e556cae4dd8ec1ebfd2643e93",
+      "version": "20261006152409",
+      "name": "legacy_004_app_data_permissions"
+    },
+    {
+      "file": "supabase/migrations/005_provider_connection_health.sql",
+      "sha256": "18b36c2fc3720382ef27a0284295b89a58a9d54cc07badcda0dae70e4dc5b450",
+      "version": "20261006152439",
+      "name": "legacy_005_provider_connection_health"
+    },
+    {
+      "file": "supabase/migrations/006_agent_execution_ledger.sql",
+      "sha256": "82f3226fd8220740c75aebc1b7f59bdb51636dee27623afd976da47a37c91d6c",
+      "version": "20261006152509",
+      "name": "legacy_006_agent_execution_ledger"
+    },
+    {
+      "file": "supabase/migrations/007_agent_tool_connectors.sql",
+      "sha256": "c30ff28f633422a2fef5e74fbcff13f97645c28ab6cce45a1a9ad04fd2a35ba2",
+      "version": "20261006152543",
+      "name": "legacy_007_agent_tool_connectors"
+    },
+    {
+      "file": "supabase/migrations/008_telegram_task_queue.sql",
+      "sha256": "42d74482389d1aac8f9874f2c61bcf2b1e7bdb1a9e19133d757b53809e231d5f",
+      "version": "20261006152614",
+      "name": "legacy_008_telegram_task_queue"
+    }
+  ],
+  "code_base": "bc19ef1234b3db0b314360d3cf319ebf4fa45d01",
+  "applied_on": "2026-10-06",
+  "project_ref": "lgimqhuohkjtwfxbaecb"
+}
