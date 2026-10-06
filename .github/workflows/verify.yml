@@ -1,0 +1,54 @@
+name: Verify Jetree
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: synthetic-ci-key
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run build
+  database:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: jetree_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: jetree_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create synthetic Auth contract
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/database/bootstrap.sql
+      - name: Apply every migration in order
+        run: |
+          for migration in supabase/migrations/*.sql; do
+            psql -X -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Verify department isolation and private credentials
+        run: psql -X -v ON_ERROR_STOP=1 -f tests/database/isolation.sql
