@@ -71,6 +71,17 @@ try {
     assert.equal((await api(admin, '/api/agents', 'PATCH', { id: agents[0], description: 'Synthetic admin update' })).status, 200);
   }
   pass('three synthetic admins retain global read/write');
+  assert.equal((await api(users[0], `/api/agents/${agents[0]}/telegram`)).status, 200);
+  assert.equal((await api(users[0], `/api/agents/${agents[1]}/telegram`)).status, 404);
+  const membershipPath = `/api/departments/${departments[1]}/members`;
+  assert.equal((await api(users[0], membershipPath)).status, 403);
+  assert.equal((await api(users[0], membershipPath, 'POST', { email: users[0].email })).status, 403);
+  assert.equal((await api(users[2], membershipPath)).status, 200);
+  assert.equal((await api(users[2], membershipPath, 'POST', { email: users[0].email })).status, 201);
+  assert.equal((await api(users[0], '/api/agents')).body.agents.length, 2);
+  assert.equal((await api(users[2], membershipPath + '?userId=' + users[0].id, 'DELETE')).status, 200);
+  assert.equal((await api(users[0], '/api/agents')).body.agents.length, 1);
+  pass('async route parameters, membership grant/revoke and Telegram agent access');
   assert.equal((await api(users[0], '/api/agents/chat', 'POST', { agentId: agents[0], message: 'No provider configured' })).status, 409);
   const forged = await api(users[0], '/api/agent-tools', 'POST', { agentId: agents[1], toolId: 'github', operation: 'list_repositories', input: {} }); assert.equal(forged.status, 403);
   pass('missing provider rejected and foreign tool execution rejected');

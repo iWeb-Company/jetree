@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServiceSupabase, requireWorkspaceAdmin } from '@/lib/server/auth';
 
-type Context = { params: { departmentId: string } };
+type Context = { params: Promise<{ departmentId: string }> };
 
-export async function GET(request: Request, { params }: Context) {
+export async function GET(request: Request, { params: promisedParams }: Context) {
+  const params = await promisedParams;
   try {
     await requireWorkspaceAdmin(request);
     const service = getServiceSupabase();
@@ -33,7 +34,8 @@ export async function GET(request: Request, { params }: Context) {
   }
 }
 
-export async function POST(request: Request, { params }: Context) {
+export async function POST(request: Request, { params: promisedParams }: Context) {
+  const params = await promisedParams;
   try {
     await requireWorkspaceAdmin(request);
     const body = await request.json();
@@ -61,7 +63,8 @@ export async function POST(request: Request, { params }: Context) {
   }
 }
 
-export async function DELETE(request: Request, { params }: Context) {
+export async function DELETE(request: Request, { params: promisedParams }: Context) {
+  const params = await promisedParams;
   try {
     await requireWorkspaceAdmin(request);
     const userId = new URL(request.url).searchParams.get('userId');
