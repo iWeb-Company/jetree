@@ -79,13 +79,13 @@ exception when insufficient_privilege then null; end;
 end $forward$;
 reset role;
 insert into auth.users (id,email) values
-('10000000-0000-0000-0000-000000000013','admin1@example.invalid'),
-('10000000-0000-0000-0000-000000000014','admin2@example.invalid'),
-('10000000-0000-0000-0000-000000000015','admin3@example.invalid');
-update public.profiles set role='admin' where id in ('10000000-0000-0000-0000-000000000013','10000000-0000-0000-0000-000000000014','10000000-0000-0000-0000-000000000015');
+('10000000-0000-0000-0000-000000000023','admin1@example.invalid'),
+('10000000-0000-0000-0000-000000000024','admin2@example.invalid'),
+('10000000-0000-0000-0000-000000000025','admin3@example.invalid');
+update public.profiles set role='admin' where id in ('10000000-0000-0000-0000-000000000023','10000000-0000-0000-0000-000000000024','10000000-0000-0000-0000-000000000025');
 set local role authenticated;
 do $admins$ declare identity_id uuid; affected integer; begin
-foreach identity_id in array array['10000000-0000-0000-0000-000000000013'::uuid,'10000000-0000-0000-0000-000000000014'::uuid,'10000000-0000-0000-0000-000000000015'::uuid] loop
+foreach identity_id in array array['10000000-0000-0000-0000-000000000023'::uuid,'10000000-0000-0000-0000-000000000024'::uuid,'10000000-0000-0000-0000-000000000025'::uuid] loop
 perform set_config('request.jwt.claim.sub',identity_id::text,true);
 if not public.is_workspace_admin() or (select count(*) from public.agents where id in ('30000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000002'))<>2 then raise exception 'Synthetic admin global read failed'; end if;
 update public.agents set description='synthetic admin test' where id in ('30000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000002');
