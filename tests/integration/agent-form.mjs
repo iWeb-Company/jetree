@@ -14,7 +14,6 @@ let userId, departmentId, browser;
 function checked(result) { assert.equal(result.error, null); return result.data; }
 try {
   userId = checked(await service.auth.admin.createUser({ email, password, email_confirm: true })).user.id;
-  departmentId = checked(await service.from('departments').insert({ name: `Form-${run}`, created_by: userId }).select('id').single()).id;
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -24,6 +23,13 @@ try {
   await page.locator('input[type=password]').fill(password);
   await page.getByRole('button', { name: 'Acceder al Workspace' }).click();
   await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 60000 });
+  await page.getByRole('button', { name: 'Estructura de Nodos', exact: true }).click();
+  page.on('dialog', dialog => dialog.accept(dialog.message().includes('Nombre') ? `Form-${run}` : 'Synthetic fixture'));
+  const createdDepartment = page.waitForResponse(response => response.url().endsWith('/api/departments') && response.request().method() === 'POST');
+  await page.getByRole('button', { name: /Nuevo departamento/ }).click();
+  const departmentResponse = await createdDepartment;
+  assert.equal(departmentResponse.status(), 201);
+  departmentId = (await departmentResponse.json()).department.id;
   await page.getByRole('button', { name: 'Agentes IA', exact: true }).click();
   await page.getByRole('button', { name: /Crear Nuevo Agente/ }).click();
   const form = page.locator('form').filter({ has: page.getByRole('button', { name: 'Crear y Activar Agente' }) });
@@ -49,7 +55,7 @@ try {
   await browser?.close();
   if (userId) {
     checked(await service.from('activity_logs').delete().eq('user_id', userId));
-    if (departmentId) checked(await service.from('departments').delete().eq('id', departmentId));
+    checked(await service.from('departments').delete().eq('created_by', userId));
     checked(await service.auth.admin.deleteUser(userId));
   }
   console.log('Synthetic form fixtures cleaned');
