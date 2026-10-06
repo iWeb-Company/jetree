@@ -23,6 +23,12 @@ jobs:
       - run: npm run lint
       - run: npx tsc --noEmit
       - run: npm run build
+      - name: Verify HTTP authentication boundaries
+        run: |
+          npm start -- --hostname 127.0.0.1 --port 3057 > /tmp/jetree-smoke.log 2>&1 &
+          jetree_pid=$!
+          trap 'kill "$jetree_pid"' EXIT
+          node tests/integration/auth-smoke.mjs
   database:
     runs-on: ubuntu-latest
     services:
@@ -51,4 +57,19 @@ jobs:
             psql -X -v ON_ERROR_STOP=1 -f "$migration"
           done
       - name: Verify department isolation and private credentials
-        run: psql -X -v ON_ERROR_STOP=1 -f tests/database/isolation.sql
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/isolation.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-isolation.sql
+      - name: Replay the audited existing schema and reconcile
+        run: |
+          psql -X -v ON_ERROR_STOP=1 -c 'create database jetree_replay'
+          export PGDATABASE=jetree_replay
+          tail -n +5 tests/database/bootstrap.sql | psql -X -v ON_ERROR_STOP=1
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-001-fixture.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/seed-existing.sql
+          psql -X -v ON_ERROR_STOP=1 --single-transaction -f supabase/reconciliation/20261006145142_reconcile_existing_001.sql
+          for migration in supabase/migrations/00[2-8]*.sql; do
+            psql -X -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
+          done
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/verify-seed.sql
+

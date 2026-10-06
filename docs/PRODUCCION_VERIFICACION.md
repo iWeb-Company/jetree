@@ -38,3 +38,5 @@ Durante la publicación detener workers y escrituras, guardar el commit anterior
 ## Bloqueos de lanzamiento
 
 No se ha verificado un respaldo remoto ni restauración. No hay staging Supabase comprobado ni E2E/REST RLS con dos cuentas. La rotación de la credencial publicada históricamente sigue sin verificarse. Falta validar secretos de despliegue sin revelarlos, proveedores autorizados, OAuth real, entrega/reintentos de Telegram, observabilidad y recuperación. No declarar listo para producción por pasar el build o el SQL local.
+
+Actualización 2026-10-06: respaldo public/Auth cifrado, restaurado localmente con ACLs y hashes verificados. Baseline y 002–008 aplicados en Supabase y registrados; 21 tablas con RLS, 187 columnas, 22 políticas. Pruebas RLS sintéticas remotas pasaron y fueron revertidas. Estado completo e historial: RECONCILIACION_SUPABASE.md y supabase/reconciliation/applied-manifest.json. E2E Auth/REST y servicios externos siguen pendientes; no publicado.
