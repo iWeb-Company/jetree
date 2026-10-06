@@ -97,7 +97,9 @@ update public.profiles set role = 'admin' where id = '10000000-0000-0000-0000-00
 set local role authenticated;
 do $$
 begin
-  if (select count(*) from public.agents) <> 2 then
+  if not public.is_workspace_admin() or (select count(*) from public.agents
+    where id in ('30000000-0000-0000-0000-000000000001',
+                 '30000000-0000-0000-0000-000000000002')) <> 2 then
     raise exception 'Administrator cannot read all departments';
   end if;
 end $$;
