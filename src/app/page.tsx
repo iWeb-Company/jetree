@@ -615,13 +615,7 @@ export default function Home() {
             >
               {authLoading ? 'Verificando credenciales...' : 'Acceder al Workspace'}
             </button>
-            <button
-              onClick={() => setIsToolConnectionsOpen(true)}
-              className="flex items-center gap-2 rounded-xl border border-cyan-800/40 bg-cyan-950/25 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition-all hover:bg-cyan-900/40"
-              title="Administrar conectores GitHub y Google Drive"
-            >
-              <span>🔌</span><span className="hidden sm:inline">Herramientas</span>
-            </button>
+
           </form>
 
           <div className="text-center pt-2 border-t border-cyan-950/40">
@@ -666,6 +660,14 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsToolConnectionsOpen(true)}
+              className="flex items-center gap-2 rounded-xl border border-cyan-800/40 bg-cyan-950/25 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition-all hover:bg-cyan-900/40"
+              title="Administrar conectores GitHub y Google Drive"
+            >
+              <span aria-hidden="true">🔌</span><span>Herramientas</span>
+            </button>
+
             {/* Botón Gestión de conexiones API */}
             <button
               onClick={() => setIsOAuthModalOpen(true)}

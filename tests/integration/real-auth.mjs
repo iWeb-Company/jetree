@@ -122,6 +122,10 @@ try {
     await page.getByRole('button', { name: 'Acceder al Workspace' }).click();
     await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 30000 });
     await page.reload(); await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
+    await page.getByRole('heading', { name: '🐙 GitHub', exact: true }).waitFor();
+    await page.getByRole('heading', { name: '📁 Google Drive', exact: true }).waitFor();
+    await page.getByRole('button', { name: 'Cerrar', exact: true }).last().click();
     assert.ok(!(await page.locator('body').innerText()).includes(`E2E-agent-${1 - i}`), 'browser must not show foreign agent');
     await page.getByRole('button', { name: 'Cerrar Sesión' }).click();
     await page.locator('input[type=password]').waitFor();
