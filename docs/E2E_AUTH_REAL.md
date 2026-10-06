@@ -18,8 +18,19 @@ Instalar dependencias con npm ci y el navegador con npx playwright install chrom
 
 ## Pendientes que no se declaran aprobados
 
-Consentimiento OAuth real, lectura/escritura/aprobación/revocación contra GitHub y Drive; inferencia real de proveedores; entrega de mensajes mediante un bot Telegram real, procesamiento de cola, reintentos y fallos terminales; staging separado y criterios operativos del plan. La configuración local de OAuth existe, pero su presencia no demuestra que los proveedores la acepten.
+Escritura real de GitHub sobre un repositorio de pruebas autorizado; inferencia real de proveedores; entrega de mensajes mediante un bot Telegram real, procesamiento de cola, reintentos y fallos terminales; staging separado y criterios operativos del plan. OAuth de ambos proveedores, lectura pública de GitHub y creación/lectura/eliminación de un documento sintético de Drive, aprobación/rechazo, auditoría y revocación remota quedaron verificados.
 
 npm audit detectó 13 dependencias afectadas, incluida una alerta crítica en Next.js 14.2.35. Requiere actualización y nueva verificación antes de publicación; no ejecutar audit fix --force sin revisar la migración del framework. No se publicó Jetree.
 
+
+
+## OAuth y herramientas reales verificados
+
+Después del consentimiento humano, Supabase confirmó GitHub y Google Drive conectados en una cuenta sintética separada. Jetree leyó el README público de supabase/supabase: HTTP 200, 16012 caracteres; no se imprimió ni guardó su contenido. Una creación de archivo de GitHub quedó pendiente, fue rechazada y no pudo aprobarse después; el registro de auditoría quedó rejected. No se hizo escritura externa en GitHub.
+
+Drive creó un documento con contenido exclusivamente sintético mediante el flujo de aprobación de Jetree. La aprobación quedó completed y su llamada succeeded; volver a aprobar fue rechazado. El documento se leyó mediante Jetree y se eliminó usando su ID exacto, con HTTP 204. No se buscaron ni leyeron archivos personales.
+
+Se revocaron ambas conexiones mediante Jetree. Ambos proveedores confirmaron la revocación remota. Las llamadas posteriores devolvieron HTTP 409. Se eliminaron la cuenta sintética, el departamento, agente, aprobaciones y llamadas; los archivos locales de acceso temporal fueron eliminados. La prueba terminó sin conexiones persistentes.
+
+Pendientes vigentes: escritura real en GitHub sobre un repositorio de pruebas autorizado, inferencia de modelos, bot Telegram real y operación de su worker/reintentos; actualización de dependencias vulnerables y otros criterios operativos. El consentimiento y creación/lectura/revocación de Drive sí quedaron verificados y no deben seguir marcándose como pendientes.
 
