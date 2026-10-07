@@ -22,6 +22,11 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
+      - name: Verify real nginx request limits
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          node tests/integration/nginx-limits.mjs
       - name: Verify deployment failure and rollback behavior
         run: |
           bash -n scripts/deploy-vps.sh scripts/deploy-ssh.sh tests/integration/deploy-rollback.sh
