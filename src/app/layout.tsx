@@ -1,5 +1,8 @@
 import './globals.css';
 
+// Request-specific CSP nonces must never be prerendered or reused from a cache.
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: 'Jetree - iWeb Management',
   description: 'Gestión operativa de agentes y departamentos',
