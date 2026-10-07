@@ -15,3 +15,25 @@ services:
     logging:
       driver: json-file
       options: { max-size: '10m', max-file: '3' }
+  worker:
+    profiles: [telegram]
+    image: ${JETREE_WORKER_IMAGE:-${JETREE_IMAGE}}
+    env_file: ${JETREE_WORKER_FILE:-/dev/null}
+    command: ['node', 'scripts/telegram-scheduler.mjs']
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 250s
+    cpus: 0.25
+    mem_limit: 128m
+    pids_limit: 30
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    healthcheck:
+      test: ['CMD', 'node', 'scripts/telegram-scheduler-health.mjs']
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 250s
+    logging:
+      driver: json-file
+      options: { max-size: '5m', max-file: '3' }
