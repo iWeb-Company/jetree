@@ -1,6 +1,6 @@
 #!/bin/bash
 # Install a reviewed copy as root-owned /usr/local/sbin/jetree-deploy.
-set -euo pipefail
+set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 umask 077
 [[ $# = 2 && $1 =~ ^(dev|production)$ && $2 =~ ^[a-f0-9]{40}$ ]] || exit 64
@@ -59,7 +59,7 @@ worker_ready() {
 }
 worker_stop() { docker compose -p "$project" -f "$compose" --profile telegram stop -t 250 worker >/dev/null; }
 rollback() {
-  trap - INT TERM
+  trap - ERR INT TERM
   if $worker_enabled; then worker_stop || { echo 'Rollback failed: could not drain worker'; exit 1; }; fi
   if [[ -n $previous ]]; then
     export JETREE_IMAGE=$previous
@@ -79,7 +79,7 @@ rollback() {
   fi
   exit 1
 }
-trap rollback INT TERM
+trap rollback ERR INT TERM
 if $worker_enabled; then worker_stop || rollback; fi
 docker compose -p "$project" -f "$compose" up -d --no-build app >/dev/null || rollback
 active=$(docker compose -p "$project" -f "$compose" ps -q app)

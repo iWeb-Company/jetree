@@ -11,7 +11,7 @@ while (!stop.signal.aborted) {
   try {
     const response = await fetch('http://app:3000/api/telegram/worker', {
       method: 'POST', headers: { 'x-jetree-worker-secret': secret },
-      // Drain an in-flight invocation before exiting, so a replacement cannot overlap it.
+      // Allow an in-flight invocation to finish before exiting during replacement.
       signal: AbortSignal.timeout(240000),
     });
     const result = await response.json();
