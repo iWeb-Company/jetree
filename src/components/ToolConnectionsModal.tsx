@@ -1,5 +1,7 @@
 'use client';
 
+import { toolErrorMessage } from '@/lib/tool-feedback';
+
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
@@ -63,7 +65,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'No se pudo resolver la aprobación.');
       const resultText = payload.result === undefined ? '' : ` Resultado: ${JSON.stringify(payload.result).slice(0, 900)}`;
-      if (decision === 'approve') window.dispatchEvent(new CustomEvent('jetree-tool-result', { detail: payload.result }));
+      if (decision === 'approve') window.dispatchEvent(new CustomEvent('jetree-tool-result', { detail: { message: payload.message, conversationId: payload.conversationId } }));
       setNotice(decision === 'approve' ? `Acción aprobada y ejecutada.${resultText}` : 'Acción rechazada.');
       await refresh();
     } catch (error) { setNotice(error instanceof Error ? error.message : 'No se pudo resolver la aprobación.'); }
@@ -105,7 +107,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
       </section>
 
       <section className="space-y-2"><h4 className="text-sm font-semibold text-white">Registro reciente</h4>
-        {calls.slice(0, 8).map(call => <div key={call.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 px-3 py-2 text-[10px]"><span className="text-gray-300">{providerName(call.provider)} · {call.operation}</span><span className={call.status === 'succeeded' ? 'text-emerald-300' : call.status === 'failed' ? 'text-rose-300' : 'text-amber-300'}>{call.status}</span></div>)}
+        {calls.slice(0, 8).map(call => <div key={call.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 px-3 py-2 text-[10px]"><span className="text-gray-300">{providerName(call.provider)} · {call.operation}{call.status === 'failed' && <span className="mt-1 block text-rose-300">{toolErrorMessage(call.error_code)}</span>}</span><span className={call.status === 'succeeded' ? 'text-emerald-300' : call.status === 'failed' ? 'text-rose-300' : 'text-amber-300'}>{call.status}</span></div>)}
       </section>
       {notice && <p role="status" className="rounded-lg bg-cyan-950/30 p-3 text-xs text-cyan-200">{notice}</p>}
       <div className="flex justify-end border-t border-cyan-950/60 pt-3"><button onClick={onClose} className="rounded-xl bg-gray-900 px-4 py-2 text-xs text-white">Cerrar</button></div>

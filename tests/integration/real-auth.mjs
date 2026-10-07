@@ -88,6 +88,26 @@ try {
   assert.equal((await api(users[0], '/api/agents/chat', 'POST', { agentId: agents[0], message: 'No provider configured' })).status, 409);
   const forged = await api(users[0], '/api/agent-tools', 'POST', { agentId: agents[1], toolId: 'github', operation: 'list_repositories', input: {} }); assert.equal(forged.status, 403);
   pass('missing provider rejected and foreign tool execution rejected');
+  db(await service.from('agents').update({ enabled_tool_ids: ['plugin-google-drive-core'] }).eq('id', agents[0]), 'enable synthetic Drive tool');
+  const missingConnection = await api(users[0], '/api/agent-tools', 'POST', { agentId: agents[0], toolId: 'plugin-google-drive-core', operation: 'search_files', input: { query: 'synthetic', pageSize: 10 } });
+  assert.equal(missingConnection.status, 409);
+  assert.equal(missingConnection.body.code, 'TOOL_CONNECTION_REQUIRED');
+  assert.match(missingConnection.body.error, /Conectá nuevamente/);
+  const failedCall = db(await service.from('agent_tool_calls').select('status,error_code').eq('user_id', users[0].id).eq('agent_id', agents[0]).eq('operation', 'search_files'), 'missing connection audit');
+  assert.deepEqual(failedCall, [{ status: 'failed', error_code: 'TOOL_CONNECTION_REQUIRED' }]);
+  pass('missing tool connection explains recovery and records failed execution');
+  const pendingWrite = await api(users[0], '/api/agent-tools', 'POST', { agentId: agents[0], toolId: 'plugin-google-drive-core', operation: 'create_doc', input: { name: 'Synthetic approval', content: 'Not sent to any provider' } });
+  assert.equal(pendingWrite.status, 202);
+  const approvalId = pendingWrite.body.approvalId;
+  const failedApproval = await api(users[0], '/api/agent-tools/approvals', 'POST', { approvalId, decision: 'approve' });
+  assert.equal(failedApproval.status, 409);
+  assert.match(failedApproval.body.error, /Conectá nuevamente/);
+  assert.equal((await api(users[0], '/api/agent-tools/approvals', 'POST', { approvalId, decision: 'approve' })).status, 409);
+  const writeCall = db(await service.from('agent_tool_calls').select('status,error_code').eq('approval_id', approvalId), 'failed approval audit');
+  assert.deepEqual(writeCall, [{ status: 'failed', error_code: 'TOOL_CONNECTION_REQUIRED' }]);
+  pass('approved action with missing connection is audited and cannot replay');
+
+
   assert.equal((await api(users[0], `/api/agents?id=${agents[0]}`, 'DELETE')).status, 200);
   assert.equal((await api(users[0], '/api/agents')).body.agents.length, 0);
   assert.equal((await api(users[0], '/api/agents', 'PATCH', { id: agents[0], action: 'restore' })).status, 200);

@@ -75,7 +75,8 @@ export async function getToolAccessToken(userId: string, provider: ToolProvider)
   const service = getServiceSupabase();
   const { data, error } = await service.from('tool_connections')
     .select('ciphertext, iv, auth_tag, status, expires_at, account_label').eq('user_id', userId).eq('provider', provider).maybeSingle();
-  if (error || !data) throw new Error('TOOL_CONNECTION_REQUIRED');
+  if (error) throw new Error('TOOL_CONNECTION_LOOKUP_FAILED');
+  if (!data) throw new Error('TOOL_CONNECTION_REQUIRED');
   assertToolConnectionConnected(data.status);
   const credentials = JSON.parse(decryptProviderSecret(data)) as OAuthCredentials;
   if (provider === 'google_drive' && data.expires_at && Date.parse(data.expires_at) < Date.now() + 60_000) {

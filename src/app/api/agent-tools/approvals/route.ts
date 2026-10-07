@@ -1,3 +1,4 @@
+import { toolErrorMessage } from '@/lib/tool-feedback';
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/auth';
 import { claimToolApproval, executeAuthorizedTool, finishToolApproval, rejectToolApproval } from '@/lib/server/agent-tools';
@@ -23,11 +24,11 @@ export async function POST(request: Request) {
     const result = await executeAuthorizedTool(client, user.id, approval.agent_id, approval.tool_id, approval.operation, approval.input, approvalId, approval.conversation_id);
     if ('pendingApproval' in result) throw new Error('TOOL_APPROVAL_NOT_PENDING');
     await finishToolApproval(user.id, approvalId, 'completed');
-    return NextResponse.json({ ok: true, status: 'completed', result: result.result });
+    return NextResponse.json({ ok: true, status: 'completed', result: result.result, message: result.message, conversationId: result.conversationId });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'TOOL_OPERATION_FAILED';
     if (executing && userId && approvalId) await finishToolApproval(userId, approvalId, 'failed', code);
     const status = code === 'AUTH_REQUIRED' ? 401 : code === 'TOOL_APPROVAL_NOT_PENDING' ? 409 : code === 'TOOL_CONNECTION_REQUIRED' || code === 'TOOL_CONNECTION_EXPIRED' ? 409 : code === 'TOOL_NOT_AUTHORIZED' ? 403 : 502;
-    return NextResponse.json({ error: 'No se pudo aprobar o ejecutar la acción.', code }, { status });
+    return NextResponse.json({ error: toolErrorMessage(code), code }, { status });
   }
 }
