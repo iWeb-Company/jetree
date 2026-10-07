@@ -116,7 +116,6 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
       throw new Error('TOOL_APPROVAL_NOT_PENDING');
     }
   }
-  const token = await getToolAccessToken(userId, request.provider);
   const callQuery = approvalId
     ? await service.from('agent_tool_calls').select('id').eq('approval_id', approvalId).eq('user_id', userId).eq('status', 'executing').maybeSingle()
     : { data: null, error: null };
@@ -132,6 +131,7 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
   }
   if (callError || !call) throw new Error('TOOL_AUDIT_FAILED');
   try {
+    const token = await getToolAccessToken(userId, request.provider);
     const result = request.provider === 'github'
       ? await githubRequest(token, request.operation, request.input)
       : await driveRequest(token, request.operation, request.input);
@@ -142,12 +142,17 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
         : `Operación completada; datos disponibles (${Object.keys((result || {}) as object).join(', ').slice(0, 300)}).`;
     const { error: auditError } = await service.from('agent_tool_calls').update({ status: 'succeeded', result_summary: summary, finished_at: new Date().toISOString() }).eq('id', call.id);
     if (auditError) throw new Error('TOOL_AUDIT_FAILED');
+    const content = `Resultado de herramienta (${request.provider} · ${request.operation}):\n${JSON.stringify(result).slice(0, 10_500)}`;
+    let message = { id: `tool-${call.id}`, agentId, role: 'assistant' as const, content, timestamp: new Date().toISOString() };
     if (conversationId) {
-      const content = `Resultado de herramienta (${request.provider} · ${request.operation}):\n${JSON.stringify(result).slice(0, 10_500)}`;
-      const { error: messageError } = await service.from('messages').insert({ conversation_id: conversationId, role: 'assistant', content });
-      if (!messageError) await service.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+      const { data: saved, error: messageError } = await service.from('messages')
+        .insert({ conversation_id: conversationId, role: 'assistant', content }).select('id, created_at').single();
+      if (!messageError && saved) {
+        message = { ...message, id: saved.id, timestamp: saved.created_at };
+        await service.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
+      }
     }
-    return { result };
+    return { result, message, conversationId: conversationId || null };
   } catch (error) {
     const code = error instanceof Error ? error.message : 'TOOL_OPERATION_FAILED';
     await service.from('agent_tool_calls').update({ status: 'failed', error_code: code, finished_at: new Date().toISOString() }).eq('id', call.id);

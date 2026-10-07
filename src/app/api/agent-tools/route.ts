@@ -1,3 +1,4 @@
+import { toolErrorMessage } from '@/lib/tool-feedback';
 import { NextResponse } from 'next/server';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { executeAuthorizedTool } from '@/lib/server/agent-tools';
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 'pendingApproval' in result ? 202 : 200 });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'TOOL_OPERATION_FAILED';
-    return NextResponse.json({ error: code === 'TOOL_NOT_AUTHORIZED' ? 'El agente no tiene permiso para usar esta herramienta.' : 'La operación de herramienta no pudo completarse.', code }, { status: statusFor(code) });
+    return NextResponse.json({ error: toolErrorMessage(code), code }, { status: statusFor(code) });
   }
 }
 

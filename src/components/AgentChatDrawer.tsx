@@ -1,5 +1,7 @@
 'use client';
 
+import { mergeToolMessage } from '@/lib/tool-feedback';
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Agent, ChatMessage, AgentActivityLog } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -112,16 +114,13 @@ export default function AgentChatDrawer({
   useEffect(() => {
     if (!agent || !isOpen) return;
     const onToolResult = (event: Event) => {
-      const result = (event as CustomEvent).detail;
-      setMessages(current => [...current, {
-        id: `tool-approval-${Date.now()}`, agentId: agent.id, role: 'assistant',
-        content: `Resultado de la acción aprobada:\n${JSON.stringify(result, null, 2)}`.slice(0, 11_500),
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      }]);
+      const payload = (event as CustomEvent).detail;
+      if (payload?.message?.agentId !== agent.id || payload.conversationId !== conversationId) return;
+      setMessages(current => mergeToolMessage(current, payload.message));
     };
     window.addEventListener('jetree-tool-result', onToolResult);
     return () => window.removeEventListener('jetree-tool-result', onToolResult);
-  }, [agent, isOpen]);
+  }, [agent, isOpen, conversationId]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -212,8 +211,7 @@ export default function AgentChatDrawer({
         setToolNotice('La escritura quedó pendiente. Revisá el detalle en Herramientas y aprobala para ejecutarla.');
         onManageTools?.();
       } else {
-        const content = `Resultado de herramienta (${selectedOperation}):\n${JSON.stringify(payload.result, null, 2)}`;
-        setMessages(current => [...current, { id: `tool-${Date.now()}`, agentId: agent.id, role: 'assistant', content, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+        if (payload.message?.agentId === agent.id) setMessages(current => mergeToolMessage(current, payload.message));
         setToolNotice('Lectura completada y registrada en auditoría.');
       }
     } catch (error) { setToolNotice(error instanceof Error ? error.message : 'La herramienta no pudo ejecutarse.'); }
