@@ -34,6 +34,7 @@ jobs:
           pid=$!
           trap 'kill "$pid"' EXIT
           node tests/integration/auth-smoke.mjs
+          node tests/integration/browser-security.mjs
           node tests/integration/real-auth.mjs
           node tests/integration/agent-form.mjs
       - name: Stop disposable database
