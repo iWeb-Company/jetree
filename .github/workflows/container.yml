@@ -63,7 +63,7 @@ jobs:
       - name: Verify scheduler authentication and graceful shutdown with synthetic transport
         run: |
           docker network create jetree-scheduler-ci
-          trap 'docker rm -f scheduler-ci app >/dev/null 2>&1; docker network rm jetree-scheduler-ci >/dev/null' EXIT
+          trap 'docker rm -f scheduler-ci rejected-scheduler-ci app >/dev/null 2>&1; docker network rm jetree-scheduler-ci >/dev/null' EXIT
           docker run -d --no-healthcheck --name app --network jetree-scheduler-ci --env-file /tmp/jetree-worker-ci.env jetree:ci node -e "require('http').createServer((q,r)=>{if(q.method!=='POST'||q.url!=='/api/telegram/worker'||q.headers['x-jetree-worker-secret']!==process.env.JETREE_TELEGRAM_WORKER_SECRET)process.exit(1);console.log('authenticated-call');setTimeout(()=>{r.setHeader('Content-Type','application/json');r.end(JSON.stringify({processed:0}));},1500);}).listen(3000,'0.0.0.0')"
           for attempt in $(seq 1 30); do
             if docker exec app node -e "const s=require('net').connect(3000,'127.0.0.1');s.on('connect',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),1000)"; then break; fi
@@ -79,5 +79,13 @@ jobs:
           docker logs app
           docker logs scheduler-ci
           test "$count" -ge 2
+          docker exec scheduler-ci node scripts/telegram-scheduler-health.mjs
           docker stop --time 10 scheduler-ci
           test "$(docker inspect --format '{{.State.ExitCode}}' scheduler-ci)" = 0
+          docker run -d --init --no-healthcheck --name rejected-scheduler-ci --network jetree-scheduler-ci -e JETREE_TELEGRAM_WORKER_SECRET=synthetic-wrong-secret-at-least-32-chars jetree:ci node scripts/telegram-scheduler.mjs
+          sleep 3
+          if docker exec rejected-scheduler-ci node scripts/telegram-scheduler-health.mjs; then
+            echo 'Unauthenticated scheduler unexpectedly healthy'
+            exit 1
+          fi
+          docker rm -f rejected-scheduler-ci
