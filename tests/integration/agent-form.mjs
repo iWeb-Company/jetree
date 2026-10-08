@@ -46,6 +46,14 @@ try {
   assert.equal(response.status(), 201);
   assert.equal((await response.json()).agent.department_id, departmentId);
   console.log('PASS untouched department selector saves the real UUID');
+  // The response arrives before the client finishes updating state and closes.
+  await page.getByRole('button', { name: 'Crear y Activar Agente', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: /Crear Nuevo Agente/ }).click();
+  const freshForm = page.locator('form').filter({ has: page.getByRole('button', { name: 'Crear y Activar Agente' }) });
+  assert.equal(await freshForm.locator('input').first().inputValue(), '');
+  assert.equal(await freshForm.locator('select').nth(1).inputValue(), 'independent');
+  await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+  console.log('PASS reopening create agent does not reuse the previous form');
   await page.reload();
   await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 60000 });
   await page.getByRole('button', { name: 'Agentes IA', exact: true }).click();
@@ -63,3 +71,4 @@ try {
   }
   console.log('Synthetic form fixtures cleaned');
 }
+
