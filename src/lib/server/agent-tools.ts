@@ -33,7 +33,9 @@ async function githubRequest(token: string, operation: ToolRequest['operation'],
     if (repository.private !== false) throw new Error('TOOL_GITHUB_PRIVATE_ACCESS_REQUIRED');
   }
   if (operation === 'list_commits' || operation === 'list_branches') {
-    const data = await providerResponse(await fetch(`${repositoryUrl}/${operation === 'list_commits' ? 'commits' : 'branches'}?per_page=20`, { headers, signal: AbortSignal.timeout(15_000) })) as Array<Record<string, any>>;
+    const query = new URLSearchParams({ per_page: '20' });
+    if (operation === 'list_commits' && input.branch) query.set('sha', String(input.branch));
+    const data = await providerResponse(await fetch(`${repositoryUrl}/${operation === 'list_commits' ? 'commits' : 'branches'}?${query}`, { headers, signal: AbortSignal.timeout(15_000) })) as Array<Record<string, any>>;
     return data.map(item => operation === 'list_commits'
       ? { sha: item.sha, message: capText(item.commit?.message || '', 2000), html_url: item.html_url }
       : { name: item.name, sha: item.commit?.sha, protected: item.protected });

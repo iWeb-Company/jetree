@@ -63,7 +63,7 @@ export function parseToolRequest(toolId: unknown, operation: unknown, rawInput: 
     if (operation === 'list_repositories') return { provider: 'github', operation, input: {}, write: false };
     if (operation === 'list_commits' || operation === 'list_branches') return {
       provider: 'github', operation, write: false,
-      input: { owner: repoPart(input.owner), repo: repoPart(input.repo) },
+      input: { owner: repoPart(input.owner), repo: repoPart(input.repo), ...(operation === 'list_commits' && input.branch !== undefined ? { branch: branchName(input.branch) } : {}) },
     };
     if (operation === 'create_branch') return {
       provider: 'github', operation, write: true,
@@ -106,7 +106,7 @@ export function parseToolRequest(toolId: unknown, operation: unknown, rawInput: 
 
 export const TOOL_CONNECTORS = [
   { id: 'plugin-github-core', name: 'GitHub', provider: 'github' as const, operations: ['list_repositories', 'get_file', 'list_commits', 'list_branches', 'create_branch', 'create_pull_request', 'create_issue', 'create_file'], inputs: {
-    list_repositories: '{}', get_file: '{owner,repo,path}', list_commits: '{owner,repo}', list_branches: '{owner,repo}',
+    list_repositories: '{}', get_file: '{owner,repo,path}', list_commits: '{owner,repo,branch?} — indicá branch si el usuario pide una rama; sin branch se consulta la predeterminada', list_branches: '{owner,repo}',
     create_branch: '{owner,repo,branch,base} — branch siempre jetree-branch-…; base debe existir',
     create_pull_request: '{owner,repo,head,base,title,body} — head jetree-branch-…; no merge automático',
     create_issue: '{owner,repo,title,body}', create_file: '{owner,repo,path,message,content,branch?}',
