@@ -131,7 +131,7 @@ export default function OAuthSubscriptionsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border border-cyan-950/80 bg-[#080c14] p-6 shadow-2xl">
+      <div className="max-h-[92dvh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border border-cyan-950/80 bg-[#080c14] p-4 sm:p-6 shadow-2xl">
         <div className="flex items-start justify-between border-b border-cyan-950/60 pb-4">
           <div>
             <h3 className="flex items-center gap-2 text-lg font-bold text-white">

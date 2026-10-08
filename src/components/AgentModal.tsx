@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Agent, Department, AgentRoleType, AIProvider, UserSubscription } from '@/types';
 import { ALL_CHATGPT_WORK_PLUGINS, PLUGIN_CATEGORIES, PluginCategory } from '@/lib/agents/plugins';
+import { supabase } from '@/lib/supabase';
 
 interface AgentModalProps {
   isOpen: boolean;
@@ -50,6 +51,23 @@ export default function AgentModal({
   const [pluginSearchQuery, setPluginSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [providerModels, setProviderModels] = useState<Partial<Record<AIProvider, Array<{ value: string; label: string }>>>>({});
+  const [modelNotice, setModelNotice] = useState('');
+
+  useEffect(() => {
+    if (!isOpen || provider === 'custom') return;
+    let active = true;
+    setModelNotice('Consultando modelos de tu conexión…');
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session?.access_token) throw new Error();
+      const response = await fetch(`/api/provider-models?provider=${provider}`, { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: 'no-store' });
+      if (!response.ok) throw new Error();
+      const payload = await response.json();
+      if (active) { setProviderModels(current => ({ ...current, [provider]: payload.models })); setModelNotice('Catálogo de tu conexión. La disponibilidad se verifica al ejecutar.'); }
+    })().catch(() => { if (active) setModelNotice('No se pudo consultar el catálogo. Se muestran las opciones guardadas.'); });
+    return () => { active = false; };
+  }, [provider, isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -92,6 +110,8 @@ export default function AgentModal({
   };
 
   const getModelOptions = (prov: AIProvider) => {
+    const catalog = providerModels[prov];
+    if (catalog?.length) return prov !== provider || catalog.some(item => item.value === model) ? catalog : [{ value: model, label: model + ' (selección guardada)' }, ...catalog];
     switch (prov) {
       case 'gemini':
         return [
@@ -185,16 +205,16 @@ export default function AgentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-[#080c14] border border-cyan-950/80 rounded-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6 space-y-5">
+      <div className="bg-[#080c14] border border-cyan-950/80 rounded-2xl max-w-3xl w-full max-h-[92dvh] overflow-y-auto shadow-2xl p-4 sm:p-6 space-y-5">
         
         {/* Header Modal con tabs de navegación */}
-        <div className="flex items-center justify-between border-b border-cyan-950/60 pb-4">
-          <div>
+        <div className="flex items-start justify-between gap-2 border-b border-cyan-950/60 pb-4">
+          <div className="min-w-0 flex-1">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
               <span>{avatar}</span>
               <span>{agentToEdit ? 'Editar Agente / Manager' : 'Crear Nuevo Agente de IA'}</span>
             </h3>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               <button
                 type="button"
                 onClick={() => setModalTab('general')}
@@ -204,7 +224,7 @@ export default function AgentModal({
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                ⚙️ Configuración General
+                ⚙️ Configuración
               </button>
               <button
                 type="button"
@@ -215,8 +235,8 @@ export default function AgentModal({
                     : 'text-gray-400 hover:text-white'
                 }`}
               >
-                <span>🔌 Conectores con acciones reales ({ALL_CHATGPT_WORK_PLUGINS.length})</span>
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/30 text-cyan-200 font-mono">
+                <span>🔌 Herramientas ({ALL_CHATGPT_WORK_PLUGINS.length})</span>
+                <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-500/30 text-cyan-200 font-mono">
                   {enabledPluginIds.length} activos
                 </span>
               </button>
@@ -224,7 +244,8 @@ export default function AgentModal({
           </div>
           <button 
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center transition-all"
+            aria-label="Cerrar configuración del agente"
+            className="w-9 h-9 shrink-0 rounded-lg bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center transition-all"
           >
             ✕
           </button>
@@ -237,8 +258,8 @@ export default function AgentModal({
           {modalTab === 'general' ? (
             <>
               {/* Nombre y Avatar */}
-              <div className="grid grid-cols-4 gap-3">
-                <div className="col-span-3">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-3">
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                     Nombre del Agente
                   </label>
@@ -266,7 +287,7 @@ export default function AgentModal({
               </div>
 
               {/* Departamento y Tipo de Rol (Manager vs Independiente) */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                     Departamento
@@ -304,7 +325,7 @@ export default function AgentModal({
               {/* Si es Manager: selección de subordinados a su cargo */}
               {roleType === 'manager' && (
                 <div className="p-3.5 bg-cyan-950/20 border border-cyan-500/30 rounded-xl space-y-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap gap-2 items-center justify-between">
                     <label className="text-xs font-semibold text-cyan-300 uppercase tracking-wider">
                       Agentes a cargo para derivación
                     </label>
@@ -367,7 +388,7 @@ export default function AgentModal({
                         : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
                     }`}
                   >
-                    <span className="font-semibold text-white flex items-center gap-1">✨ Gemini Pro</span>
+                    <span className="font-semibold text-white flex items-center gap-1">✨ Gemini</span>
                     <span className={`text-[9px] mt-1 font-mono ${isSubscribed('gemini') ? 'text-cyan-400' : 'text-gray-500'}`}>
                       {isSubscribed('gemini') ? '● API configurada' : 'Configurar API'}
                     </span>
@@ -397,7 +418,7 @@ export default function AgentModal({
                         : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
                     }`}
                   >
-                    <span className="font-semibold text-white flex items-center gap-1">🟣 Claude Pro</span>
+                    <span className="font-semibold text-white flex items-center gap-1">🟣 Claude</span>
                     <span className={`text-[9px] mt-1 font-mono ${isSubscribed('claude') ? 'text-purple-400' : 'text-gray-500'}`}>
                       {isSubscribed('claude') ? '● API configurada' : 'Configurar API'}
                     </span>
@@ -447,6 +468,7 @@ export default function AgentModal({
               </div>
 
               {/* Descripción */}
+              {provider !== 'custom' && <p role="status" className="text-xs text-gray-400">{modelNotice}</p>}
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                   Descripción del Rol

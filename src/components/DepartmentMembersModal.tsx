@@ -84,7 +84,7 @@ export default function DepartmentMembersModal({ department, onClose }: Departme
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-lg space-y-5 rounded-2xl border border-cyan-950/80 bg-[#080c14] p-6 shadow-2xl">
+      <div className="max-h-[92dvh] overflow-y-auto w-full max-w-lg space-y-5 rounded-2xl border border-cyan-950/80 bg-[#080c14] p-4 sm:p-6 shadow-2xl">
         <div className="flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold text-white">Miembros del departamento</h3>

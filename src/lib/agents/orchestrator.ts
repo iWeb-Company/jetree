@@ -3,6 +3,7 @@ import { ALL_CHATGPT_WORK_PLUGINS } from '@/lib/agents/plugins';
 import { allowedSubordinates, resolveDelegationTarget } from '@/lib/agents/delegation-policy';
 import { parseManagerPlan } from '@/lib/agents/planner';
 import { callAIProvider, ProviderCall } from '@/lib/agents/provider-adapter';
+import { respondWithTools, type ToolRunner } from '@/lib/agents/tool-loop';
 
 export type ExecutionResult = {
   reply: string;
@@ -20,9 +21,9 @@ export type ExecutionResult = {
 function formatPluginsContext(agent: Agent): string {
   const activePlugins = ALL_CHATGPT_WORK_PLUGINS.filter(plugin => agent.enabledPluginIds?.includes(plugin.id));
   if (activePlugins.length === 0) return '';
-  return '\nConectores habilitados en el panel del agente (la persona usuaria inicia cada operación):\n'
+  return '\nConectores habilitados del agente:\n'
     + activePlugins.map(plugin => '- ' + plugin.name + ': ' + plugin.description).join('\n')
-    + '\nNo afirmes haber ejecutado una operación externa.\n';
+    + '\nSolo afirmes haber ejecutado una operación externa cuando exista un resultado confirmado de la herramienta.\n';
 }
 
 function buildAgentPrompt(agent: Agent, userMessage: string, history: { role: 'user' | 'assistant'; content: string }[]) {
@@ -40,6 +41,7 @@ export async function executeAgentChat(
   apiKeys: Record<string, string> = {},
   providerCall: ProviderCall = callAIProvider,
   onDelegation?: (delegation: NonNullable<ExecutionResult['delegation']>) => Promise<void>,
+  toolRunner?: ToolRunner,
 ): Promise<ExecutionResult> {
   const logs: AgentActivityLog[] = [];
   const now = () => new Date().toISOString();
@@ -54,7 +56,7 @@ export async function executeAgentChat(
   const subordinates = allowedSubordinates(agent, availableAgents);
   if (agent.roleType !== 'manager' || subordinates.length === 0) {
     log({ agentId: agent.id, agentName: agent.name, type: 'agent_executing', message: agent.name + ' inició la ejecución.' });
-    const reply = await providerCall(agent, buildAgentPrompt(agent, userMessage, chatHistory), apiKeys);
+    const reply = await respondWithTools(agent, buildAgentPrompt(agent, userMessage, chatHistory), apiKeys, providerCall, toolRunner);
     if (!reply.trim()) throw new Error('EMPTY_PROVIDER_RESPONSE');
     log({ agentId: agent.id, agentName: agent.name, type: 'completed', message: agent.name + ' completó la respuesta.' });
     return { reply: reply.slice(0, 11_500), logs };
@@ -83,7 +85,10 @@ export async function executeAgentChat(
   const plan = parseManagerPlan(rawPlan, subordinates.map(item => item.id));
   if (plan.decision === 'direct') {
     log({ agentId: agent.id, agentName: agent.name, type: 'completed', message: agent.name + ' resolvió la consulta directamente.' });
-    return { reply: plan.directResponse.slice(0, 11_500), logs };
+    const reply = toolRunner && agent.enabledPluginIds?.length
+      ? await respondWithTools(agent, buildAgentPrompt(agent, userMessage, chatHistory), apiKeys, providerCall, toolRunner)
+      : plan.directResponse;
+    return { reply: reply.slice(0, 11_500), logs };
   }
 
   const specialist = resolveDelegationTarget(agent, subordinates, plan.delegateTo);
@@ -110,7 +115,7 @@ export async function executeAgentChat(
     + formatPluginsContext(specialist)
     + '\nTarea asignada por ' + agent.name + ':\n' + plan.subTask
     + '\n\nSolicitud original:\n' + userMessage;
-  const specialistResult = await providerCall(specialist, specialistPrompt, apiKeys);
+  const specialistResult = await respondWithTools(specialist, specialistPrompt, apiKeys, providerCall, toolRunner);
   if (!specialistResult.trim()) throw new Error('EMPTY_PROVIDER_RESPONSE');
   log({ agentId: specialist.id, agentName: specialist.name, type: 'completed', message: specialist.name + ' completó la tarea.' });
 

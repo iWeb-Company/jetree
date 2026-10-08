@@ -147,9 +147,10 @@ try {
   const history = await api(users[0], `/api/conversations?agentId=${agents[0]}`); assert.equal(history.body.messages.length, 1);
   pass('archive/restore preserves conversation');
   for (const provider of ['github', 'google_drive']) {
-    const initiated = await api(users[0], `/api/tool-connections/oauth?provider=${provider}`);
+    const initiated = await api(users[0], `/api/tool-connections/oauth?provider=${provider}${provider === 'github' ? '&githubAccess=public' : ''}`);
     assert.equal(initiated.status, 200, `OAuth ${provider} configured`);
     const authorization = new URL(initiated.body.authorizationUrl);
+    if (provider === 'github') assert.equal(authorization.searchParams.get('scope'), 'read:user public_repo');
     assert.equal(authorization.searchParams.get('redirect_uri'), origin + '/api/tool-connections/oauth/callback');
     const state = authorization.searchParams.get('state'); assert.ok(state);
     const denied = await fetch(origin + '/api/tool-connections/oauth/callback?' + new URLSearchParams({ state, error: 'access_denied' }), { redirect: 'manual' });
@@ -157,6 +158,14 @@ try {
     const replay = await fetch(origin + '/api/tool-connections/oauth/callback?' + new URLSearchParams({ state, error: 'access_denied' }), { redirect: 'manual' });
     assert.ok(replay.headers.get('location')?.includes('oauth_state_invalid'));
   }
+  const privateGitHub = await api(users[0], '/api/tool-connections/oauth?provider=github&githubAccess=private');
+  assert.equal(privateGitHub.status, 200);
+  const privateAuthorization = new URL(privateGitHub.body.authorizationUrl);
+  assert.equal(privateAuthorization.searchParams.get('scope'), 'read:user repo');
+  const privateState = privateAuthorization.searchParams.get('state');
+  const deniedPrivate = await fetch(origin + '/api/tool-connections/oauth/callback?' + new URLSearchParams({ state: privateState, error: 'access_denied' }), { redirect: 'manual' });
+  assert.ok(deniedPrivate.headers.get('location')?.includes('authorization_denied'));
+  assert.equal((await api(users[0], '/api/tool-connections/oauth?provider=github&githubAccess=invalid')).status, 400);
   pass('both OAuth starts, denied consent and one-time state replay protection');
   const webhookSecret = randomBytes(32).toString('hex');
   const bot = db(await service.from('telegram_bots').insert({ agent_id: agents[0], owner_user_id: users[0].id, token_ciphertext: 'synthetic-unused', token_iv: 'synthetic-unused', token_auth_tag: 'synthetic-unused', secret_hash: createHash('sha256').update(webhookSecret).digest('hex') }).select('id').single(), 'synthetic bot fixture');
@@ -181,6 +190,17 @@ try {
     const mobileNav = page.getByRole('navigation', { name: 'Navegación móvil' });
     await mobileNav.getByRole('button', { name: 'Agentes IA', exact: true }).click();
     await page.getByRole('button', { name: '+ Crear Nuevo Agente' }).waitFor();
+    for (const width of [320, 360, 390, 768, 1024, 1440]) {
+      await page.setViewportSize({ width, height: 844 });
+      const sizes = await page.evaluate(() => ({ viewport: window.innerWidth, content: document.documentElement.scrollWidth }));
+      assert.ok(sizes.content <= sizes.viewport, `agents must not overflow at ${width}px (${sizes.content}px)`);
+      await page.getByRole('button', { name: '+ Crear Nuevo Agente' }).click();
+      await page.getByRole('heading', { name: /Crear Nuevo Agente de IA/ }).waitFor();
+      const modalSizes = await page.evaluate(() => ({ viewport: window.innerWidth, content: document.documentElement.scrollWidth }));
+      assert.ok(modalSizes.content <= modalSizes.viewport, `agent form must not overflow at ${width}px`);
+      await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     await mobileNav.getByRole('button', { name: 'Panel General' }).click();
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.reload(); await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 30000 });

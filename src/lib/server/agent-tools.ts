@@ -1,6 +1,7 @@
 import { getServiceSupabase } from '@/lib/server/auth';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getToolAccessToken } from '@/lib/server/tool-connections';
+import { getGithubConnectionAccess, getToolAccessToken } from '@/lib/server/tool-connections';
+import type { GithubAccess } from '@/lib/agents/github-access';
 import { assertToolEnabled, parseToolRequest, type ToolRequest } from '@/lib/agents/tool-catalog';
 
 function capText(value: string, max = 16_000) { return value.length > max ? value.slice(0, max) + '\n[recortado]' : value; }
@@ -18,14 +19,41 @@ async function providerResponse(response: Response): Promise<unknown> {
   return capText(await response.text());
 }
 
-async function githubRequest(token: string, operation: ToolRequest['operation'], input: Record<string, unknown>) {
+async function githubRequest(token: string, operation: ToolRequest['operation'], input: Record<string, unknown>, access: GithubAccess) {
   const headers = { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json' };
   if (operation === 'list_repositories') {
-    const response = await fetch('https://api.github.com/user/repos?visibility=public&sort=updated&per_page=30', { headers, signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(`https://api.github.com/user/repos?visibility=${access === 'private' ? 'all' : 'public'}&sort=updated&per_page=30`, { headers, signal: AbortSignal.timeout(15_000) });
     const data = await providerResponse(response) as Array<Record<string, unknown>>;
-    return data.map(repo => ({ full_name: repo.full_name, description: repo.description, html_url: repo.html_url, updated_at: repo.updated_at })).slice(0, 30);
+    return data.filter(repo => access === 'private' || repo.private === false).map(repo => ({ full_name: repo.full_name, private: repo.private, description: repo.description, html_url: repo.html_url, updated_at: repo.updated_at })).slice(0, 30);
   }
   const owner = String(input.owner); const repo = String(input.repo);
+  const repositoryUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  if (access === 'public') {
+    const repository = await providerResponse(await fetch(repositoryUrl, { headers, signal: AbortSignal.timeout(15_000) })) as { private?: boolean };
+    if (repository.private !== false) throw new Error('TOOL_GITHUB_PRIVATE_ACCESS_REQUIRED');
+  }
+  if (operation === 'list_commits' || operation === 'list_branches') {
+    const query = new URLSearchParams({ per_page: '20' });
+    if (operation === 'list_commits' && input.branch) query.set('sha', String(input.branch));
+    const data = await providerResponse(await fetch(`${repositoryUrl}/${operation === 'list_commits' ? 'commits' : 'branches'}?${query}`, { headers, signal: AbortSignal.timeout(15_000) })) as Array<Record<string, any>>;
+    return data.map(item => operation === 'list_commits'
+      ? { sha: item.sha, message: capText(item.commit?.message || '', 2000), html_url: item.html_url }
+      : { name: item.name, sha: item.commit?.sha, protected: item.protected });
+  }
+  if (operation === 'create_branch') {
+    const reference = await providerResponse(await fetch(`${repositoryUrl}/git/ref/heads/${encodePath(String(input.base))}`, { headers, signal: AbortSignal.timeout(15_000) })) as { object?: { sha?: string } };
+    if (!reference.object?.sha) throw new Error('TOOL_OPERATION_FAILED');
+    const result = await providerResponse(await fetch(`${repositoryUrl}/git/refs`, {
+      method: 'POST', headers, body: JSON.stringify({ ref: `refs/heads/${input.branch}`, sha: reference.object.sha }), signal: AbortSignal.timeout(15_000),
+    })) as { ref?: string; object?: { sha?: string } };
+    return { branch: input.branch, ref: result.ref, sha: result.object?.sha };
+  }
+  if (operation === 'create_pull_request') {
+    const result = await providerResponse(await fetch(`${repositoryUrl}/pulls`, {
+      method: 'POST', headers, body: JSON.stringify({ head: input.head, base: input.base, title: input.title, body: input.body, draft: true }), signal: AbortSignal.timeout(15_000),
+    })) as Record<string, unknown>;
+    return { number: result.number, html_url: result.html_url, title: result.title, draft: result.draft };
+  }
   if (operation === 'get_file') {
     const path = encodePath(String(input.path));
     const metadataResponse = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`, { headers, signal: AbortSignal.timeout(12_000) });
@@ -47,7 +75,7 @@ async function githubRequest(token: string, operation: ToolRequest['operation'],
     const path = encodePath(String(input.path));
     const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path}`, {
       method: 'PUT', headers,
-      body: JSON.stringify({ message: input.message, content: Buffer.from(String(input.content), 'utf8').toString('base64') }), signal: AbortSignal.timeout(15_000),
+      body: JSON.stringify({ message: input.message, content: Buffer.from(String(input.content), 'utf8').toString('base64'), ...(input.branch ? { branch: input.branch } : {}) }), signal: AbortSignal.timeout(15_000),
     });
     const data = await providerResponse(response) as { content?: { html_url?: string; path?: string }; commit?: { sha?: string } };
     return { path: data.content?.path, html_url: data.content?.html_url, commit: data.commit?.sha };
@@ -57,6 +85,11 @@ async function githubRequest(token: string, operation: ToolRequest['operation'],
 
 async function driveRequest(token: string, operation: ToolRequest['operation'], input: Record<string, unknown>) {
   const headers = { Authorization: `Bearer ${token}` };
+  if (operation === 'trash_file') {
+    return providerResponse(await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(String(input.fileId))}?fields=id,name,trashed`, {
+      method: 'PATCH', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }), signal: AbortSignal.timeout(15_000),
+    }));
+  }
   if (operation === 'search_files') {
     const rawQuery = String(input.query || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const q = `trashed = false${rawQuery ? ` and name contains '${rawQuery}'` : ''}`;
@@ -133,7 +166,7 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
   try {
     const token = await getToolAccessToken(userId, request.provider);
     const result = request.provider === 'github'
-      ? await githubRequest(token, request.operation, request.input)
+      ? await githubRequest(token, request.operation, request.input, await getGithubConnectionAccess(userId))
       : await driveRequest(token, request.operation, request.input);
     const summary = Array.isArray(result)
       ? `Se devolvieron ${result.length} resultados.`

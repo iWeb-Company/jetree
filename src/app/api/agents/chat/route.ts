@@ -4,6 +4,7 @@ import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-adapter';
 import { Agent, AIProvider } from '@/types';
+import { executeAuthorizedTool } from '@/lib/server/agent-tools';
 
 export const runtime = 'nodejs';
 
@@ -184,7 +185,7 @@ export async function POST(request: Request) {
     const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys, undefined, async delegation => {
       const { error } = await service.from('agent_executions').update({ delegation }).eq('id', executionId);
       if (error) throw new AgentEngineError('PERSISTENCE_FAILED');
-    });
+    }, (executingAgent, toolId, operation, input) => executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId));
     const { error: assistantMessageError } = await service.from('messages').insert({
       conversation_id: conversationId,
       execution_id: executionId,

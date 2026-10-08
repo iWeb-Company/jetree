@@ -1,6 +1,7 @@
 'use client';
 
 import { mergeToolMessage } from '@/lib/tool-feedback';
+import ChatApprovals from '@/components/ChatApprovals';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Agent, ChatMessage, AgentActivityLog } from '@/types';
@@ -115,7 +116,7 @@ export default function AgentChatDrawer({
     if (!agent || !isOpen) return;
     const onToolResult = (event: Event) => {
       const payload = (event as CustomEvent).detail;
-      if (payload?.message?.agentId !== agent.id || payload.conversationId !== conversationId) return;
+      if (!payload?.message?.id || payload.conversationId !== conversationId) return;
       setMessages(current => mergeToolMessage(current, payload.message));
     };
     window.addEventListener('jetree-tool-result', onToolResult);
@@ -222,21 +223,21 @@ export default function AgentChatDrawer({
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm animate-in fade-in">
-      <div className="w-full max-w-2xl bg-[#080c14] border-l border-cyan-950/80 h-full flex flex-col justify-between shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="w-full max-w-2xl bg-[#080c14] border-l border-cyan-950/80 h-[100dvh] min-w-0 flex flex-col justify-between shadow-2xl animate-in slide-in-from-right duration-200">
         
         {/* Top Header */}
-        <div className="h-20 px-6 border-b border-cyan-950/60 bg-[#0b101d]/60 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl border ${
+        <div className="min-h-20 px-4 sm:px-6 py-3 border-b border-cyan-950/60 bg-[#0b101d]/60 flex flex-wrap gap-2 items-center justify-between shrink-0">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-xl border ${
               isManager 
                 ? 'bg-cyan-950/50 border-cyan-500/40 text-cyan-300' 
                 : 'bg-gray-900 border-gray-800 text-gray-200'
             }`}>
               {agent.avatar || (isManager ? '👑' : '🤖')}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-white text-base leading-tight">{agent.name}</h3>
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h3 title={agent.name} className="line-clamp-2 font-bold text-white text-base leading-tight">{agent.name}</h3>
                 <span className={`text-[9px] px-2 py-0.5 rounded-full uppercase tracking-wider font-mono font-bold ${
                   isManager 
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' 
@@ -245,7 +246,7 @@ export default function AgentChatDrawer({
                   {isManager ? 'Manager' : 'Especialista'}
                 </span>
               </div>
-              <p className="text-[11px] text-gray-400 mt-0.5 flex items-center gap-2">
+              <p className="text-[11px] text-gray-400 mt-0.5 flex min-w-0 flex-wrap items-center gap-2">
                 <span className="text-cyan-400 font-mono">[{agent.model}]</span>
                 <span>•</span>
                 <span className="text-emerald-400">● Conectado</span>
@@ -253,10 +254,11 @@ export default function AgentChatDrawer({
               <p className="mt-1 text-[10px] text-cyan-400/80">Conversación compartida con el departamento</p>
             </div>
           </div>
-          {usableToolIds.length > 0 && <button onClick={() => setToolPanelOpen(value => !value)} className="mr-2 rounded-lg border border-cyan-800/60 px-3 py-2 text-xs text-cyan-200">🔌 Herramientas</button>}
+          {usableToolIds.length > 0 && <button onClick={() => setToolPanelOpen(value => !value)} className="mr-2 rounded-lg border border-cyan-800/60 px-3 py-2 text-xs text-cyan-200">Opciones avanzadas</button>}
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center transition-all"
+            aria-label="Cerrar conversación"
+            className="w-9 h-9 shrink-0 rounded-xl bg-gray-900 border border-gray-800 text-gray-400 hover:text-white flex items-center justify-center transition-all"
           >
             ✕
           </button>
@@ -264,7 +266,7 @@ export default function AgentChatDrawer({
 
         {/* Banner informativo de subordinados si es Manager */}
         {isManager && subordinates.length > 0 && (
-          <div className="px-6 py-2.5 bg-cyan-950/20 border-b border-cyan-950/60 flex items-center justify-between text-xs">
+          <div className="px-4 sm:px-6 py-2.5 bg-cyan-950/20 border-b border-cyan-950/60 flex flex-wrap gap-2 items-center justify-between text-xs">
             <span className="text-gray-300 flex items-center gap-1.5">
               <span>👥</span>
               <span>Especialistas a su cargo para derivar tareas:</span>
@@ -303,7 +305,9 @@ export default function AgentChatDrawer({
         </section>}
 
         {/* Message Viewport */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 font-sans">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 font-sans">
+          {usableToolIds.length > 0 && <p className="text-xs text-gray-400">Pedí lo que necesitás: el agente elegirá GitHub o Drive. Las acciones que modifican datos requieren tu aprobación aquí.</p>}
+          <ChatApprovals conversationId={conversationId} refreshKey={messages.length} />
           {messages.map(msg => {
             const isUser = msg.role === 'user';
             return (
@@ -318,7 +322,7 @@ export default function AgentChatDrawer({
                 )}
 
                 <div
-                  className={`max-w-[85%] rounded-2xl p-4 text-xs leading-relaxed ${
+                  className={`min-w-0 max-w-[85%] [overflow-wrap:anywhere] rounded-2xl p-4 text-xs leading-relaxed ${
                     isUser
                       ? 'bg-cyan-500 text-black font-medium shadow-lg shadow-cyan-500/10'
                       : 'bg-[#0b101d] text-gray-200 border border-cyan-950/70 shadow-md'
@@ -328,7 +332,7 @@ export default function AgentChatDrawer({
 
                   {/* Badge de derivación si hubo subordinado ejecutando */}
                   {msg.delegation && (
-                    <div className="mt-3 pt-2.5 border-t border-cyan-900/40 flex items-center gap-2 text-[10px] text-cyan-300 font-mono">
+                    <div className="mt-3 pt-2.5 border-t border-cyan-900/40 flex min-w-0 flex-wrap items-center gap-2 text-[10px] text-cyan-300 font-mono">
                       <span>⚡ Derivado a: <strong>{msg.delegation.assignedToAgentName}</strong></span>
                     </div>
                   )}
@@ -351,7 +355,7 @@ export default function AgentChatDrawer({
               <div className="w-8 h-8 rounded-lg bg-cyan-950/40 border border-cyan-500/30 flex items-center justify-center text-sm shrink-0 animate-pulse">
                 {agent.avatar || '🧠'}
               </div>
-              <div className="bg-[#0b101d] border border-cyan-950/80 px-4 py-3 rounded-2xl text-xs text-cyan-300 flex items-center gap-2">
+              <div className="bg-[#0b101d] border border-cyan-950/80 px-4 py-3 rounded-2xl text-xs text-cyan-300 flex min-w-0 flex-wrap items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></div>
                 <span>
                   {isManager
@@ -378,12 +382,12 @@ export default function AgentChatDrawer({
                   : `Escribe un requerimiento para ${agent.name}...`
               }
               disabled={loading}
-              className="flex-1 bg-[#05070b] border border-cyan-950 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-all disabled:opacity-50"
+              className="min-w-0 flex-1 bg-[#05070b] border border-cyan-950 rounded-xl px-4 py-3 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 transition-all disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={loading || !inputText.trim()}
-              className="px-5 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50"
+              className="shrink-0 px-3 sm:px-5 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50"
             >
               <span>Enviar</span>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -391,7 +395,7 @@ export default function AgentChatDrawer({
               </svg>
             </button>
           </form>
-          <div className="flex justify-between items-center mt-2 px-1 text-[10px] text-gray-500">
+          <div className="flex flex-wrap gap-2 justify-between items-center mt-2 px-1 text-[10px] text-gray-500">
             <span>Powered by iWeb Orchestrator</span>
             <span>Canal Seguro Supabase + {agent.provider.toUpperCase()}</span>
           </div>

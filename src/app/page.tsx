@@ -659,7 +659,7 @@ export default function Home() {
             <p className="text-xs text-gray-500 mt-0.5">iWeb Enterprise Workspace • Orquestación Multi-Agente & Telegram</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <button
               onClick={() => setIsToolConnectionsOpen(true)}
               className="flex items-center gap-2 rounded-xl border border-cyan-800/40 bg-cyan-950/25 px-3 py-1.5 text-xs font-semibold text-cyan-200 transition-all hover:bg-cyan-900/40"
@@ -727,7 +727,7 @@ export default function Home() {
           )}
 
           {/* Métricas Corporativas Rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
 
             <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl p-5 shadow-sm">
               <div className="flex justify-between items-start">
@@ -794,7 +794,7 @@ export default function Home() {
             <div className="space-y-8">
               {/* Tablero Kanban de Tareas con Filtro por Departamento */}
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-base font-semibold text-white">Flujo Operativo de Tareas</h3>
                     <p className="text-xs text-gray-400">Canal sincronizado con Telegram y tareas clasificadas por departamento</p>
@@ -829,7 +829,7 @@ export default function Home() {
           {/* -------------------------------------------------------- */}
           {activeTab === 'departments' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-bold text-white">Topología del Árbol Organizacional</h3>
                   <p className="text-xs text-gray-400 mt-0.5">
@@ -953,7 +953,7 @@ export default function Home() {
                   No se encontraron agentes en el departamento seleccionado.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] gap-5">
                   {filteredAgents.map(agent => {
                     const subordinates = agents.filter(a => agent.subordinateIds?.includes(a.id));
                     return (

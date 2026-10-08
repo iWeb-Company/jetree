@@ -55,25 +55,25 @@ export default function AgentCard({
   const badge = getProviderBadge(agent.provider);
 
   return (
-    <div className={`bg-[#05070b] border rounded-xl p-5 transition-all relative flex flex-col justify-between ${
+    <div className={`bg-[#05070b] border rounded-xl p-4 sm:p-5 transition-all relative min-w-0 flex flex-col justify-between ${
       isManager 
         ? 'border-cyan-500/50 shadow-lg shadow-cyan-500/5 hover:border-cyan-400' 
         : 'border-cyan-950/60 hover:border-cyan-800/60'
     }`}>
       {/* Header: Avatar, Rol, Provider badge */}
       <div>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl shadow-md border ${
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center text-xl shadow-md border ${
               isManager 
                 ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300' 
                 : 'bg-gray-900/60 border-cyan-950/80 text-gray-200'
             }`}>
               {agent.avatar || (isManager ? '🧠' : '🤖')}
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h4 className="font-semibold text-white text-sm">{agent.name}</h4>
+                <h4 className="font-semibold text-white text-sm [overflow-wrap:anywhere]">{agent.name}</h4>
               </div>
               <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full font-mono mt-0.5 uppercase tracking-wider ${
                 isManager 
@@ -85,12 +85,12 @@ export default function AgentCard({
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex max-w-full min-w-0 flex-col items-start gap-1">
             <span className={`text-[10px] px-2 py-0.5 rounded-md font-mono border flex items-center gap-1 ${badge.cls}`}>
               <span>{badge.icon}</span>
               <span>{badge.label}</span>
             </span>
-            <span className="text-[9px] text-gray-500 font-mono">
+            <span className="text-[9px] text-gray-500 font-mono [overflow-wrap:anywhere]">
               {agent.model}
             </span>
           </div>
@@ -120,7 +120,7 @@ export default function AgentCard({
         {/* Si es Manager: mostrar qué subordinados tiene a cargo */}
         {isManager && (
           <div className="mt-4 pt-3 border-t border-cyan-950/60">
-            <p className="text-[11px] font-medium text-cyan-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+            <p className="text-[11px] font-medium text-cyan-400 uppercase tracking-wider mb-2 flex flex-wrap items-center gap-1.5">
               <span>👥 Agentes a su cargo ({subordinates.length})</span>
             </p>
             {subordinates.length === 0 ? (
@@ -149,7 +149,7 @@ export default function AgentCard({
           <span className="text-[10px] text-gray-400 uppercase font-mono">Online</span>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {/* Botón para Configurar Bot de Telegram de BotFather */}
           {onConfigureTelegram && (
             <button
@@ -189,7 +189,7 @@ export default function AgentCard({
           {/* Botón Consultar / Hablar */}
           <button
             onClick={() => onChat(agent)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex flex-wrap items-center gap-1.5 transition-all shadow-md ${
               isManager
                 ? 'bg-cyan-500 hover:bg-cyan-400 text-black shadow-cyan-500/20'
                 : 'bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-800/60'
