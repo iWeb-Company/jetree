@@ -1,21 +1,19 @@
-import { mkdir, readFile, writeFile, chmod, stat, rename, rm, readdir } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod, stat, rename, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
-import { validateOrigin, childEnvironment, isolatedSettings, isolatedCliArguments, decodeReply, validateJob, plainCliPrompt, CLI_VERSION } from './runtime.mjs';
+import { validateOrigin, validateJob, plainCliPrompt } from './runtime.mjs';
+import { installAntigravity, antigravityEnvironment, antigravitySettings, antigravityArguments, decodeAntigravityReply } from './antigravity.mjs';
 
 const root = join(homedir(), '.jetree-personal');
-const providerHome = join(root, 'google');
-const workspace = join(root, 'empty-workspace');
-const settingsPath = join(providerHome, '.gemini', 'settings.json');
-// Use the supported isolated user configuration. System files require admin
-// ownership and are ignored in a normal user's home directory.
-const absentSystemPath = join(root, 'no-system-settings.json');
-const policyPath = join(root, 'deny-tools.toml');
+const providerHome = join(root, 'antigravity');
+const workspace = join(providerHome, 'empty-workspace');
+const settingsPath = join(providerHome, '.gemini', 'antigravity-cli', 'settings.json');
 const connectionPath = join(root, 'connection.json');
-const cliRoot = join(dirname(fileURLToPath(import.meta.url)), 'node_modules', '@google', 'gemini-cli');
+// Enable only in a reviewed release after real authentication, model selection,
+// effective deny-policy tests, cancellation and revocation pass.
+const ANTIGRAVITY_TRANSPORT_APPROVED = false;
 let activeChild;
 let stopped = false;
 
@@ -31,29 +29,26 @@ async function protect(path, directory = false) {
 }
 
 async function setup() {
-  for (const path of [absentSystemPath, absentSystemPath + '.defaults']) {
-    try { await stat(path); throw new Error('Configuración de sistema inesperada en el perfil aislado.'); }
-    catch (error) { if (error.code !== 'ENOENT') throw error; }
-  }
   await mkdir(root, { recursive: true, mode: 0o700 });
   await protect(root, true);
   await mkdir(providerHome, { recursive: true, mode: 0o700 });
   await mkdir(dirname(settingsPath), { recursive: true, mode: 0o700 });
   await mkdir(workspace, { recursive: true, mode: 0o700 });
   if ((await readdir(workspace)).length) throw new Error('La carpeta de trabajo aislada debe estar vacía.');
-  await writeFile(policyPath, '[[rule]]\ntoolName = "*"\ndecision = "deny"\npriority = 999\n', { mode: 0o600 });
-  await writeFile(settingsPath, JSON.stringify(isolatedSettings(policyPath)), { mode: 0o600 });
-  await protect(policyPath); await protect(settingsPath);
-  const pkg = JSON.parse(await readFile(join(cliRoot, 'package.json'), 'utf8'));
-  if (pkg.version !== CLI_VERSION) throw new Error('La versión del Gemini CLI no coincide; instalá con npm ci.');
-  const bin = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin.gemini;
-  return join(cliRoot, bin);
+  await writeFile(settingsPath, JSON.stringify(antigravitySettings()), { mode: 0o600 });
+  await protect(settingsPath);
+  const configDirectory = join(providerHome, '.gemini', 'config');
+  await mkdir(configDirectory, { recursive: true, mode: 0o700 });
+  await writeFile(join(configDirectory, 'hooks.json'), '{}', { mode: 0o600 });
+  await writeFile(join(configDirectory, 'mcp_config.json'), '{"mcpServers":{}}', { mode: 0o600 });
+  for (const directory of ['Roaming', 'Local']) await mkdir(join(providerHome, 'AppData', directory), { recursive: true, mode: 0o700 });
+  return installAntigravity(join(root, 'antigravity-bin'));
 }
 
 async function runGoogle(cliPath, prompt, deadline) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, ...isolatedCliArguments(policyPath), '--output-format', 'json'], {
-      cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath),
+    const child = spawn(cliPath, antigravityArguments(), {
+      cwd: workspace, env: antigravityEnvironment(process.env, providerHome),
       shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
     activeChild = child;
@@ -69,9 +64,9 @@ async function runGoogle(cliPath, prompt, deadline) {
     child.on('close', code => {
       clearTimeout(timer); activeChild = null;
       if (code !== 0 || oversized || stopped) return reject(new Error('La cuenta Google no completó la respuesta.'));
-      try { resolve(decodeReply(output)); } catch (error) { reject(error); }
+      try { resolve(decodeAntigravityReply(output)); } catch (error) { reject(error); }
     });
-    child.stdin.end(plainCliPrompt(prompt));
+    child.stdin.end(JSON.stringify({ event: 'user', message: { content: plainCliPrompt(prompt) } }) + String.fromCharCode(10));
   });
 }
 
@@ -90,12 +85,13 @@ async function main() {
   if (!['login', 'pair', 'start'].includes(mode)) throw new Error('Usá npm run login, npm run pair o npm start.');
   const cliPath = await setup();
   if (mode === 'login') {
-    console.log('Iniciá sesión con Google en el CLI oficial. Luego cerralo con /quit. No ingreses una API key.');
-    const child = spawn(process.execPath, [cliPath, ...isolatedCliArguments(policyPath)], { cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath), shell: false, stdio: 'inherit' });
+    console.log('Completá el login oficial de Antigravity con Google. Verificá qué cuenta usás. Luego cerrá con /quit. Jetree no recibe tus credenciales Google.');
+    const child = spawn(cliPath, [], { cwd: workspace, env: antigravityEnvironment(process.env, providerHome), shell: false, stdio: 'inherit' });
     activeChild = child;
     await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error('Login no completado.'))); });
     return;
   }
+  if (!ANTIGRAVITY_TRANSPORT_APPROVED) throw new Error('Antigravity en validación: vinculación y envío de mensajes todavía no habilitados.');
   if (mode === 'pair') {
     const terminal = createInterface({ input: process.stdin, output: process.stdout });
     try {
@@ -137,8 +133,7 @@ async function main() {
       await request(connection.origin, '/api/model-devices/relay', {
         action: response ? 'complete' : 'fail', jobId: job.id, lease: job.lease, response,
       }, connection.token);
-      // Retain OAuth login, remove CLI conversation recordings from this isolated profile.
-      await rm(join(providerHome, '.gemini', 'tmp'), { recursive: true, force: true });
+      // Antigravity owns its local history and OS keyring. Never inspect its tokens.
       console.log(response ? 'Respuesta entregada.' : 'Fallo informado a Jetree.');
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
