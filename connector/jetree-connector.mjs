@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { validateOrigin, validateJob, plainCliPrompt } from './runtime.mjs';
-import { installAntigravity, antigravityEnvironment, antigravitySettings, antigravityArguments, decodeAntigravityReply } from './antigravity.mjs';
+import { installAntigravity, antigravityEnvironment, antigravitySettings, antigravityArguments, decodeAntigravityReply, CHAT_AGENT, CHAT_AGENT_SOURCE, validateAntigravityInit, stopAntigravity, availableGeminiModels } from './antigravity.mjs';
 
 const root = join(homedir(), '.jetree-personal');
 const providerHome = join(root, 'antigravity');
@@ -14,6 +14,10 @@ const connectionPath = join(root, 'connection.json');
 // Enable only in a reviewed release after real authentication, model selection,
 // effective deny-policy tests, cancellation and revocation pass.
 const ANTIGRAVITY_TRANSPORT_APPROVED = false;
+const devPreview = process.argv.includes('--dev-preview');
+function requirePreviewOrigin(origin) {
+  if (!ANTIGRAVITY_TRANSPORT_APPROVED && origin !== 'https://jetree-dev.iwebtecnology.com') throw new Error('Esta prueba solo admite Jetree dev; producción sigue deshabilitada.');
+}
 let activeChild;
 let stopped = false;
 
@@ -39,34 +43,49 @@ async function setup() {
   await protect(settingsPath);
   const configDirectory = join(providerHome, '.gemini', 'config');
   await mkdir(configDirectory, { recursive: true, mode: 0o700 });
+  await mkdir(join(configDirectory, 'agents'), { recursive: true, mode: 0o700 });
+  await writeFile(join(configDirectory, 'agents', `${CHAT_AGENT}.md`), CHAT_AGENT_SOURCE, { mode: 0o600 });
   await writeFile(join(configDirectory, 'hooks.json'), '{}', { mode: 0o600 });
   await writeFile(join(configDirectory, 'mcp_config.json'), '{"mcpServers":{}}', { mode: 0o600 });
   for (const directory of ['Roaming', 'Local']) await mkdir(join(providerHome, 'AppData', directory), { recursive: true, mode: 0o700 });
   return installAntigravity(join(root, 'antigravity-bin'));
 }
 
-async function runGoogle(cliPath, prompt, deadline) {
+async function runGoogle(cliPath, prompt, deadline, model) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cliPath, antigravityArguments(), {
+    const child = spawn(cliPath, antigravityArguments(model), {
       cwd: workspace, env: antigravityEnvironment(process.env, providerHome),
       shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
     activeChild = child;
-    let output = ''; let oversized = false;
-    const timer = setTimeout(() => child.kill(), Math.max(1, Math.min(160_000, deadline - Date.now())));
+    child.stdout.setEncoding('utf8');
+    let output = ''; let oversized = false; let pending = ''; let initialized = false; let rejected = false;
+    const abort = () => { rejected = true; stopAntigravity(child); };
+    const timer = setTimeout(abort, Math.max(1, Math.min(45000, deadline - Date.now())));
     child.stdout.on('data', data => {
       output += data.toString();
-      if (Buffer.byteLength(output) > 500_000) { oversized = true; child.kill(); }
+      if (Buffer.byteLength(output) > 500_000) { oversized = true; abort(); return; }
+      pending += data.toString();
+      while (pending.includes('\n')) {
+        const end = pending.indexOf('\n'); const line = pending.slice(0, end); pending = pending.slice(end + 1);
+        if (!line.trim()) continue;
+        try {
+          const event = JSON.parse(line);
+          if (!initialized) {
+            validateAntigravityInit(event, model); initialized = true;
+            child.stdin.end(JSON.stringify({ event: 'user', message: { content: plainCliPrompt(prompt) } }) + '\n');
+          } else if (event.event === 'init' || event.step_update?.step_type === 'tool' || event.step_update?.subagent_info || event.step_update?.tool_info) abort();
+        } catch { abort(); }
+      }
     });
-    child.stderr.resume(); // Do not print prompts, provider tokens or detailed provider errors.
+    child.stderr.on('data', data => { if (/Authentication required|sign in|consent/i.test(data.toString())) abort(); });
     child.stdin.on('error', () => {});
     child.on('error', error => { clearTimeout(timer); reject(error); });
     child.on('close', code => {
       clearTimeout(timer); activeChild = null;
-      if (code !== 0 || oversized || stopped) return reject(new Error('La cuenta Google no completó la respuesta.'));
+      if (code !== 0 || oversized || stopped || rejected || !initialized) return reject(new Error('La cuenta Google no completó la respuesta.'));
       try { resolve(decodeAntigravityReply(output)); } catch (error) { reject(error); }
     });
-    child.stdin.end(JSON.stringify({ event: 'user', message: { content: plainCliPrompt(prompt) } }) + String.fromCharCode(10));
   });
 }
 
@@ -91,11 +110,16 @@ async function main() {
     await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error('Login no completado.'))); });
     return;
   }
-  if (!ANTIGRAVITY_TRANSPORT_APPROVED) throw new Error('Antigravity en validación: vinculación y envío de mensajes todavía no habilitados.');
+  if (!ANTIGRAVITY_TRANSPORT_APPROVED && !devPreview) throw new Error('Antigravity en validación. La prueba de dev requiere --dev-preview; producción sigue deshabilitada.');
   if (mode === 'pair') {
+    const models = availableGeminiModels(cliPath, { cwd: workspace, env: antigravityEnvironment(process.env, providerHome) });
+    console.log('Modelos Gemini de tu cuenta:\n' + models.join('\n'));
     const terminal = createInterface({ input: process.stdin, output: process.stdout });
     try {
       const origin = validateOrigin((await terminal.question('Dominio de Jetree (https://…): ')).trim());
+      requirePreviewOrigin(origin);
+      const model = (await terminal.question('Modelo Gemini (copiá uno de la lista): ')).trim();
+      if (!models.includes(model)) throw new Error('El modelo no está disponible en tu cuenta.');
       const pairingCode = (await terminal.question('Código de vinculación de tu usuario (no lo compartas): ')).trim();
       if (!/^[a-f0-9]{64}$/.test(pairingCode)) throw new Error('Código inválido.');
       const name = (await terminal.question('Nombre de este equipo: ')).trim();
@@ -103,7 +127,7 @@ async function main() {
       const data = await request(origin, '/api/model-devices/connect', { pairingCode, name });
       if (!/^[a-f0-9]{64}$/.test(data.token)) throw new Error('Respuesta de vinculación inválida.');
       const temporary = `${connectionPath}.tmp`;
-      await writeFile(temporary, JSON.stringify({ origin, token: data.token, deviceId: data.deviceId }), { mode: 0o600 });
+      await writeFile(temporary, JSON.stringify({ origin, token: data.token, deviceId: data.deviceId, model }), { mode: 0o600 });
       await protect(temporary); await rename(temporary, connectionPath);
       console.log('Equipo vinculado. Usá npm start para mantenerlo conectado.');
     } finally { terminal.close(); }
@@ -113,7 +137,9 @@ async function main() {
   if (process.platform !== 'win32' && (metadata.mode & 0o077)) throw new Error('El archivo de conexión debe tener permisos 600.');
   const connection = JSON.parse(await readFile(connectionPath, 'utf8'));
   validateOrigin(connection.origin);
+  requirePreviewOrigin(connection.origin);
   if (!/^[a-f0-9]{64}$/.test(connection.token)) throw new Error('Conexión inválida.');
+  if (!availableGeminiModels(cliPath, { cwd: workspace, env: antigravityEnvironment(process.env, providerHome) }).includes(connection.model)) throw new Error('Volvé a vincular este equipo eligiendo un modelo Gemini de tu cuenta.');
   console.log('Conector personal iniciado. Solo chat web Google; las herramientas se aprueban en Jetree.');
   while (!stopped) {
     const { job } = await request(connection.origin, '/api/model-devices/relay', { action: 'poll' }, connection.token);
@@ -124,10 +150,10 @@ async function main() {
         if (heartbeatBusy) return;
         heartbeatBusy = true;
         try { await request(connection.origin, '/api/model-devices/relay', { action: 'heartbeat', jobId: job.id, lease: job.lease }, connection.token); }
-        catch { activeChild?.kill(); }
+        catch { stopAntigravity(activeChild); }
         finally { heartbeatBusy = false; }
       }, 5000);
-      try { validateJob(job); response = await runGoogle(cliPath, job.prompt, Date.parse(job.expiresAt)); }
+      try { validateJob(job); response = await runGoogle(cliPath, job.prompt, Date.parse(job.expiresAt), connection.model); }
       catch { console.log('Ejecución no completada. Revisá tu sesión Google; no se usó API.'); }
       finally { clearInterval(heartbeat); }
       await request(connection.origin, '/api/model-devices/relay', {
@@ -139,5 +165,5 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
 }
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopped = true; activeChild?.kill(); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { stopped = true; stopAntigravity(activeChild); });
 main().catch(error => { console.error(error instanceof Error ? error.message : 'Conector detenido.'); process.exitCode = 1; });

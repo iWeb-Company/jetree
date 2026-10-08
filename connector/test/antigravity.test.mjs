@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { antigravityEnvironment, antigravitySettings, antigravityArguments, decodeAntigravityReply, RELEASES } from '../antigravity.mjs';
+import { antigravityEnvironment, antigravitySettings, antigravityArguments, decodeAntigravityReply, RELEASES, validateAntigravityInit, CHAT_AGENT } from '../antigravity.mjs';
 
 test('Antigravity profile excludes provider billing and configuration overrides', () => {
   const env = antigravityEnvironment({ PATH: '/bin', GEMINI_API_KEY: 'secret', GOOGLE_API_KEY: 'secret', AGY_ACCOUNT: 'other', ANTIGRAVITY_APP_DATA_DIR: '/shared', GOOGLE_APPLICATION_CREDENTIALS: '/key', NODE_OPTIONS: '--require evil', HTTPS_PROXY: 'https://evil' }, '/isolated');
@@ -19,6 +19,13 @@ test('Antigravity profile excludes provider billing and configuration overrides'
     assert.equal(new URL(release.url).origin, 'https://storage.googleapis.com');
     assert.match(release.sha512, /^[a-f0-9]{128}$/);
   }
+});
+test('native handshake rejects another model, agent or weakened permissions before prompt delivery', () => {
+  const model = 'gemini-3.8-flash-low';
+  const event = { event:'init', init:{model,agent:CHAT_AGENT,permission_mode:'strict'} };
+  validateAntigravityInit(event, model);
+  for (const patch of [{model:'claude-opus-4-6-thinking'},{agent:'other'},{permission_mode:'always-proceed'}]) assert.throws(() => validateAntigravityInit({...event,init:{...event.init,...patch}}, model));
+  assert.throws(() => antigravityArguments('claude-sonnet-4-6'));
 });
 test('Antigravity stream rejects partial, duplicate, failed, tool and subagent results', () => {
   const init = { event: 'init', init: { permission_mode: 'strict' } };

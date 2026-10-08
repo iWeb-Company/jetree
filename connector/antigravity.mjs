@@ -28,8 +28,23 @@ export function antigravitySettings() {
     hooks: {},
   };
 }
-export function antigravityArguments() {
-  return ['--input-format', 'stream-json', '--output-format', 'stream-json', '--disable-slash-commands', '--print-timeout', '40s'];
+export const CHAT_AGENT = 'jetree-text-only';
+export const CHAT_AGENT_SOURCE = `---
+name: jetree-text-only
+description: Text responses for Jetree without local tools.
+tools: []
+mainAgent: true
+subagent: false
+commandExecutionPolicy: off
+mcpServers: []
+skills: []
+plugins: []
+---
+Respond to the supplied conversation using text only. You have no tools. External actions are managed by Jetree.
+`;
+export function antigravityArguments(model = 'gemini-3.8-flash-low') {
+  if (!/^gemini-[a-z0-9.-]+$/.test(model)) throw new Error('Elegí un modelo Gemini disponible en tu cuenta.');
+  return ['--input-format', 'stream-json', '--output-format', 'stream-json', '--disable-slash-commands', '--print-timeout', '40s', '--agent', CHAT_AGENT, '--model', model];
 }
 export function decodeAntigravityReply(output) {
   const events = output.trim().split(/\r?\n/).map(line => JSON.parse(line));
@@ -42,6 +57,22 @@ export function decodeAntigravityReply(output) {
   const result = results[0]?.result;
   if (results.length !== 1 || result?.status !== 'SUCCESS' || result.error || typeof result.response !== 'string' || !result.response.trim() || result.response.length > 48_000) throw new Error('Respuesta incompleta.');
   return result.response;
+}
+export function validateAntigravityInit(event, model) {
+  if (event.event !== 'init' || event.init?.permission_mode !== 'strict' || event.init?.agent !== CHAT_AGENT || event.init?.model !== model) throw new Error('Antigravity no confirmó el agente, modelo y permisos esperados.');
+}
+export function stopAntigravity(child) {
+  if (!child || child.exitCode !== null || child.signalCode !== null) return;
+  if (process.platform === 'win32' && child.pid) {
+    spawnSync('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 5000, stdio: 'ignore', shell: false });
+  } else child.kill();
+}
+export function availableGeminiModels(binary, options) {
+  const result = spawnSync(binary, ['models'], { ...options, encoding: 'utf8', windowsHide: true, shell: false, timeout: 20000 });
+  if (result.status !== 0) throw new Error('No se pudieron consultar los modelos. Completá npm run login.');
+  const models = result.stdout.split(/\r?\n/).map(line => line.split('\t')[0]).filter(model => /^gemini-[a-z0-9.-]+$/.test(model));
+  if (!models.length) throw new Error('Tu cuenta no ofrece modelos Gemini para esta conexión.');
+  return models;
 }
 export async function installAntigravity(directory) {
   if (process.platform !== 'win32' || !RELEASES[process.arch]) throw new Error('Esta versión del conector Antigravity requiere Windows x64 o ARM64.');
