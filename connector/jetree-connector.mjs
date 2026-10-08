@@ -1,10 +1,10 @@
-import { mkdir, readFile, writeFile, chmod, stat, rename, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod, stat, rename, rm, readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
-import { validateOrigin, childEnvironment, isolatedSettings, decodeReply, validateJob, plainCliPrompt, CLI_VERSION } from './runtime.mjs';
+import { validateOrigin, childEnvironment, isolatedSettings, isolatedCliArguments, decodeReply, validateJob, plainCliPrompt, CLI_VERSION } from './runtime.mjs';
 
 const root = join(homedir(), '.jetree-personal');
 const providerHome = join(root, 'google');
@@ -40,6 +40,7 @@ async function setup() {
   await mkdir(providerHome, { recursive: true, mode: 0o700 });
   await mkdir(dirname(settingsPath), { recursive: true, mode: 0o700 });
   await mkdir(workspace, { recursive: true, mode: 0o700 });
+  if ((await readdir(workspace)).length) throw new Error('La carpeta de trabajo aislada debe estar vacía.');
   await writeFile(policyPath, '[[rule]]\ntoolName = "*"\ndecision = "deny"\npriority = 999\n', { mode: 0o600 });
   await writeFile(settingsPath, JSON.stringify(isolatedSettings(policyPath)), { mode: 0o600 });
   await protect(policyPath); await protect(settingsPath);
@@ -51,7 +52,7 @@ async function setup() {
 
 async function runGoogle(cliPath, prompt, deadline) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, '--admin-policy', policyPath, '--output-format', 'json'], {
+    const child = spawn(process.execPath, [cliPath, ...isolatedCliArguments(policyPath), '--output-format', 'json'], {
       cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath),
       shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -90,7 +91,7 @@ async function main() {
   const cliPath = await setup();
   if (mode === 'login') {
     console.log('Iniciá sesión con Google en el CLI oficial. Luego cerralo con /quit. No ingreses una API key.');
-    const child = spawn(process.execPath, [cliPath, '--admin-policy', policyPath], { cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath), shell: false, stdio: 'inherit' });
+    const child = spawn(process.execPath, [cliPath, ...isolatedCliArguments(policyPath)], { cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath), shell: false, stdio: 'inherit' });
     activeChild = child;
     await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error('Login no completado.'))); });
     return;

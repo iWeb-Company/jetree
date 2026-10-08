@@ -28,14 +28,22 @@ export function isolatedSettings(policyPath) {
     security: { auth: { selectedType: 'oauth-personal', enforcedType: 'oauth-personal' }, disableYoloMode: true, disableAlwaysAllow: true },
     tools: { core: [] },
     hooksConfig: { enabled: false },
-    admin: { extensions: { enabled: false }, mcp: { enabled: false }, skills: { enabled: false } },
+    mcpServers: {},
+    mcp: { allowed: ['__jetree_no_mcp__'] },
     skills: { enabled: false },
+    experimental: { enableAgents: false, autoMemory: false },
     ide: { enabled: false },
     context: { fileName: 'JETREE_NO_LOCAL_CONTEXT_8cbd5a.md', loadMemoryFromIncludeDirectories: false },
     general: { enableAutoUpdate: false, enableAutoUpdateNotification: false, sessionRetention: { enabled: true, maxAge: '1d', maxCount: 1 } },
     telemetry: { enabled: false },
     advanced: { ignoreLocalEnv: true },
   };
+}
+
+export function isolatedCliArguments(policyPath) {
+  // Admin settings in a user file are ignored by the CLI. Use its supported
+  // command-line controls for extensions and supplemental deny policy instead.
+  return ['--admin-policy', policyPath, '--extensions', 'none', '--allowed-mcp-server-names', '__jetree_no_mcp__'];
 }
 
 export function decodeReply(output) {

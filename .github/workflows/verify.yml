@@ -23,7 +23,9 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
       - name: Verify isolated personal connector contract
-        run: node --test connector/test/*.test.mjs
+        run: |
+          npm ci --prefix connector --ignore-scripts
+          node --test connector/test/*.test.mjs
       - name: Verify real nginx request limits
         run: |
           sudo apt-get update
