@@ -2,6 +2,7 @@ import type { ChatMessage } from '@/types';
 
 export function toolErrorMessage(code: string) {
   switch (code) {
+    case 'TOOL_GITHUB_PRIVATE_ACCESS_REQUIRED': return 'Este repositorio requiere acceso privado. En Conectores de herramientas, ampliá el permiso de GitHub y autorizalo en GitHub.';
     case 'TOOL_CONNECTION_REQUIRED': return 'Conectá nuevamente el proveedor en Conectores de herramientas para continuar.';
     case 'TOOL_CONNECTION_EXPIRED':
     case 'TOOL_PROVIDER_AUTH_FAILED': return 'La autorización del proveedor venció o fue revocada. Volvé a conectarlo en Conectores de herramientas.';

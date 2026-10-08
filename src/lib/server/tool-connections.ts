@@ -3,8 +3,9 @@ import { getServiceSupabase } from '@/lib/server/auth';
 import { decryptProviderSecret, encryptProviderSecret } from '@/lib/server/provider-secrets';
 import type { ToolProvider } from '@/lib/agents/tool-catalog';
 import { assertToolConnectionConnected } from '@/lib/agents/tool-catalog';
+import { githubAccessForCredentials, type GithubAccess } from '@/lib/agents/github-access';
 
-export type OAuthCredentials = { access_token: string; refresh_token?: string; expires_at?: number; token_type?: string; scope?: string };
+export type OAuthCredentials = { access_token: string; refresh_token?: string; expires_at?: number; token_type?: string; scope?: string; github_access?: GithubAccess };
 
 export function appBaseUrl(): string {
   const value = process.env.JETREE_APP_URL;
@@ -21,28 +22,39 @@ export function toolOAuthCallbackUrl(): string {
   return new URL('/api/tool-connections/oauth/callback', appBaseUrl()).toString();
 }
 
-export async function createOAuthState(userId: string, provider: ToolProvider): Promise<string> {
+export type { GithubAccess } from '@/lib/agents/github-access';
+
+export async function getGithubConnectionAccess(userId: string): Promise<GithubAccess> {
+  const { data, error } = await getServiceSupabase().from('tool_connections')
+    .select('ciphertext, iv, auth_tag, status').eq('user_id', userId).eq('provider', 'github').maybeSingle();
+  if (error || !data) throw new Error('TOOL_CONNECTION_REQUIRED');
+  assertToolConnectionConnected(data.status);
+  const credentials = JSON.parse(decryptProviderSecret(data)) as OAuthCredentials;
+  return githubAccessForCredentials(credentials.scope, credentials.github_access);
+}
+
+export async function createOAuthState(userId: string, provider: ToolProvider, githubAccess: GithubAccess = 'public'): Promise<string> {
   const state = randomBytes(32).toString('base64url');
   const stateHash = createHash('sha256').update(state).digest('hex');
   const service = getServiceSupabase();
   await service.from('tool_oauth_states').delete().lt('expires_at', new Date().toISOString());
   const { error } = await service.from('tool_oauth_states').insert({
-    state_hash: stateHash, user_id: userId, provider,
+    state_hash: stateHash, user_id: userId, provider, github_access: provider === 'github' ? githubAccess : 'public',
     expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
   });
   if (error) throw new Error('TOOL_OAUTH_STATE_FAILED');
   return state;
 }
 
-export async function consumeOAuthState(state: string): Promise<{ userId: string; provider: ToolProvider } | null> {
+export async function consumeOAuthState(state: string): Promise<{ userId: string; provider: ToolProvider; githubAccess: GithubAccess } | null> {
   if (!/^[A-Za-z0-9_-]{40,50}$/.test(state)) return null;
   const stateHash = createHash('sha256').update(state).digest('hex');
   const service = getServiceSupabase();
   const { data, error } = await service.from('tool_oauth_states').delete()
     .eq('state_hash', stateHash).gt('expires_at', new Date().toISOString())
-    .select('user_id, provider').maybeSingle();
+    .select('user_id, provider, github_access').maybeSingle();
   if (error || !data) return null;
-  return { userId: data.user_id, provider: data.provider as ToolProvider };
+  return { userId: data.user_id, provider: data.provider as ToolProvider, githubAccess: data.github_access === 'private' ? 'private' : 'public' };
 }
 
 export async function storeToolConnection(userId: string, provider: ToolProvider, credentials: OAuthCredentials, accountLabel: string | null) {

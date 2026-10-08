@@ -75,7 +75,7 @@ export default function DepartmentTree({
         )}
       </div>
 
-      <div className="p-6 space-y-5">
+      <div className="p-3 sm:p-6 space-y-5">
         {filteredDepartments.map(dept => {
           // Filtrar agentes de este departamento
           const deptAgents = agents.filter(a => a.departmentId === dept.id);
@@ -85,9 +85,9 @@ export default function DepartmentTree({
           return (
             <div key={dept.id} className="border border-cyan-950/60 bg-[#05070b] p-5 rounded-xl space-y-4">
               {/* Encabezado del Departamento */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-lg font-bold">
+              <div className="flex flex-wrap gap-3 items-center justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="w-9 h-9 shrink-0 rounded-lg bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 text-lg font-bold">
                     {dept.icon || '🌳'}
                   </div>
                   <div>
@@ -95,7 +95,7 @@ export default function DepartmentTree({
                     <p className="text-xs text-gray-400 mt-0.5">{dept.description}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-cyan-950/40 text-cyan-300 border border-cyan-900/50 font-mono">
                     {deptAgents.length} agentes
                   </span>
@@ -139,7 +139,7 @@ export default function DepartmentTree({
                       const subs = deptAgents.filter(a => mgr.subordinateIds?.includes(a.id));
                       return (
                         <div key={mgr.id} className="bg-[#0b101d]/80 p-4 rounded-lg border border-cyan-500/30 space-y-3">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-wrap gap-3 items-center justify-between">
                             <div className="flex items-center gap-2.5">
                               <span className="text-lg">{mgr.avatar || '👨‍💼'}</span>
                               <div>
@@ -210,7 +210,7 @@ export default function DepartmentTree({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-mono">
                             {agent.provider.toUpperCase()} • {agent.model}
                           </span>

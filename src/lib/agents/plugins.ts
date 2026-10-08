@@ -18,13 +18,13 @@ export const PLUGIN_CATEGORIES: { id: PluginCategory; label: string; icon: strin
 
 export const ALL_CHATGPT_WORK_PLUGINS: AgentPlugin[] = [
   {
-    id: 'plugin-github-core', name: 'GitHub', description: 'Lista repositorios públicos y lee archivos. Crear issues o archivos requiere aprobación por operación.',
+    id: 'plugin-github-core', name: 'GitHub', description: 'Consulta repositorios, commits, ramas y archivos según tu conexión. Crear ramas, PRs, issues y archivos requiere aprobación.',
     category: 'installed', icon: '🐙', providerCompatibility: ['openai', 'gemini', 'claude', 'custom'],
-    operations: ['list_repositories', 'get_file', 'create_issue (con aprobación)', 'create_file (con aprobación)'],
+    operations: ['list_repositories', 'get_file', 'list_commits', 'list_branches', 'create_branch (con aprobación)', 'create_pull_request (con aprobación)', 'create_issue (con aprobación)', 'create_file (con aprobación)'],
   },
   {
-    id: 'plugin-google-drive-core', name: 'Google Drive', description: 'Busca y lee archivos autorizados por la app. Crear documentos requiere aprobación por operación.',
+    id: 'plugin-google-drive-core', name: 'Google Drive', description: 'Busca y lee archivos autorizados por la app. Crear documentos o enviarlos a la papelera requiere aprobación.',
     category: 'installed', icon: '📁', providerCompatibility: ['openai', 'gemini', 'claude', 'custom'],
-    operations: ['search_files', 'get_text_file', 'create_doc (con aprobación)'],
+    operations: ['search_files', 'get_text_file', 'create_doc (con aprobación)', 'trash_file (con aprobación)'],
   },
 ];

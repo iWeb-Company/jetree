@@ -5,7 +5,7 @@ import { toolErrorMessage } from '@/lib/tool-feedback';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-type Connection = { provider: 'github' | 'google_drive'; status: string; scopes: string[]; expires_at: string | null; account_label: string | null };
+type Connection = { provider: 'github' | 'google_drive'; status: string; scopes: string[]; expires_at: string | null; account_label: string | null; githubAccess?: 'public' | 'private' };
 type Approval = { id: string; agent_id: string; provider: string; tool_id: string; operation: string; input: Record<string, unknown>; created_at: string };
 
 export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
@@ -14,6 +14,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
   const [calls, setCalls] = useState<any[]>([]);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
+  const [githubAccess, setGithubAccess] = useState<'public' | 'private'>('public');
 
   const headers = useCallback(async () => {
     const { data } = await supabase.auth.getSession();
@@ -26,6 +27,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'No se pudo cargar el estado de herramientas.');
     setConnections(payload.connections || []);
+    setGithubAccess(payload.connections?.find((item: Connection) => item.provider === 'github')?.githubAccess || 'public');
     setApprovals(payload.pendingApprovals || []);
     setCalls(payload.calls || []);
   }, [headers]);
@@ -36,7 +38,8 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
   const connect = async (provider: Connection['provider']) => {
     setBusy(provider); setNotice('');
     try {
-      const response = await fetch(`/api/tool-connections/oauth?provider=${provider}`, { headers: await headers(), cache: 'no-store' });
+      const access = provider === 'github' ? `&githubAccess=${githubAccess}` : '';
+      const response = await fetch(`/api/tool-connections/oauth?provider=${provider}${access}`, { headers: await headers(), cache: 'no-store' });
       const payload = await response.json();
       if (!response.ok || !payload.authorizationUrl) throw new Error(payload.error || 'No se pudo iniciar la conexión OAuth.');
       window.location.assign(payload.authorizationUrl);
@@ -74,12 +77,12 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
 
   const providerName = (provider: string) => provider === 'github' ? 'GitHub' : 'Google Drive';
   const connectorCards: Array<{ id: Connection['provider']; icon: string; title: string; description: string; scopes: string }> = [
-    { id: 'github', icon: '🐙', title: 'GitHub', description: 'Repositorios públicos: lectura, issues y creación de archivos. Cada escritura requiere aprobación.', scopes: 'Scopes OAuth: read:user, public_repo' },
+    { id: 'github', icon: '🐙', title: 'GitHub', description: 'Elegí si el agente trabajará solo con repositorios públicos o también con los privados que autorices.', scopes: 'El acceso se limita al alcance que elijas; cada escritura requiere aprobación.' },
     { id: 'google_drive', icon: '📁', title: 'Google Drive', description: 'Busca, lee y crea documentos propiedad de esta integración. Cada creación requiere aprobación.', scopes: 'Scope OAuth: drive.file' },
   ];
 
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-    <div className="max-h-[92vh] w-full max-w-3xl space-y-5 overflow-y-auto rounded-2xl border border-cyan-950/80 bg-[#080c14] p-6 shadow-2xl">
+    <div className="max-h-[92dvh] w-full max-w-3xl space-y-5 overflow-y-auto rounded-2xl border border-cyan-950/80 bg-[#080c14] p-4 sm:p-6 shadow-2xl">
       <div className="flex items-start justify-between border-b border-cyan-950/60 pb-4">
         <div><h3 className="text-lg font-bold text-white">🔌 Conectores de herramientas</h3><p className="mt-1 text-xs text-gray-400">Autorizá GitHub y Drive por usuario; los tokens se guardan cifrados en el servidor.</p></div>
         <button onClick={onClose} aria-label="Cerrar" className="h-8 w-8 rounded-lg border border-gray-800 bg-gray-900 text-gray-400">✕</button>
@@ -92,6 +95,15 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
             <div className="flex items-center justify-between"><h4 className="font-semibold text-white">{card.icon} {card.title}</h4><span className={`rounded-full px-2 py-1 text-[10px] ${connection ? 'bg-emerald-950 text-emerald-300' : 'bg-gray-900 text-gray-400'}`}>{connection ? 'Conectado' : 'Desconectado'}</span></div>
             <p className="text-xs text-gray-400">{card.description}</p>
             <p className="text-[10px] text-gray-500">{card.scopes}</p>
+            {card.id === 'github' && <fieldset className="space-y-2 rounded-lg border border-gray-800 p-3">
+              <legend className="px-1 text-xs text-gray-400">Acceso que usará Jetree</legend>
+              <label className="flex items-start gap-2 text-xs text-gray-300"><input name="github-access" type="radio" checked={githubAccess === 'public'} onChange={() => setGithubAccess('public')} /> Solo repositorios públicos</label>
+              <label className="flex items-start gap-2 text-xs text-gray-300"><input name="github-access" type="radio" checked={githubAccess === 'private'} onChange={() => setGithubAccess('private')} /> Públicos y privados de tu cuenta</label>
+              <p className="text-xs text-amber-200">{githubAccess === 'private' ? 'GitHub pide el permiso repo: acceso amplio de lectura y escritura a los repositorios que tu cuenta puede usar. Esta conexión OAuth no permite elegir repositorios individuales.' : 'Se solicita acceso de lectura y escritura a repositorios públicos. Jetree bloqueará los privados aunque GitHub conserve un permiso anterior más amplio.'}</p>
+              <p className="text-xs text-gray-400">Las organizaciones pueden exigir aprobación o SSO adicional. Cada escritura del agente se revisa antes de ejecutarse.</p>
+              {connection && <p className="text-xs text-cyan-200">Acceso actual en Jetree: {connection.githubAccess === 'private' ? 'públicos y privados' : 'solo públicos'}. Para aplicar tu elección, volvé a autorizar.</p>}
+              {connection && <button disabled={Boolean(busy)} onClick={() => connect('github')} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200 disabled:opacity-50">Revisar permisos en GitHub</button>}
+            </fieldset>}
             {connection && <p className="text-[10px] text-gray-400">Cuenta: {connection.account_label || 'conectada'} · permisos: {(connection.scopes || []).join(', ') || 'según la app OAuth'}</p>}
             <button disabled={busy === card.id} onClick={() => connection ? disconnect(card.id) : connect(card.id)} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200 disabled:opacity-50">{busy === card.id ? 'Procesando…' : connection ? 'Revocar conexión' : 'Conectar'}</button>
           </section>;
