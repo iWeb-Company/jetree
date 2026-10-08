@@ -5,6 +5,8 @@ import { getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-adapter';
 import { Agent, AIProvider } from '@/types';
 import { executeAuthorizedTool } from '@/lib/server/agent-tools';
+import { selectedModelSource } from '@/lib/model-device-contract';
+import { personalDeviceProvider, requireOwnedModelDevice } from '@/lib/server/model-devices';
 
 export const runtime = 'nodejs';
 
@@ -31,6 +33,7 @@ function toAgent(row: Record<string, any>): Agent {
 
 function responseForError(error: unknown) {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'MODEL_SOURCE_INVALID') return NextResponse.json({ error: 'Conexión del modelo inválida.' }, { status: 400 });
   if (code === 'AUTH_REQUIRED') return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
   if (code === 'SERVER_CONFIGURATION_ERROR') {
     return NextResponse.json({ error: 'La bóveda de credenciales no está configurada en el servidor.' }, { status: 503 });
@@ -44,6 +47,8 @@ export async function POST(request: Request) {
   try {
     const { client, user } = await requireUser(request);
     const body = await request.json();
+    const modelSource = selectedModelSource(body.modelSource);
+    const deviceId = typeof body.deviceId === 'string' ? body.deviceId : '';
     const agentId = typeof body.agentId === 'string' ? body.agentId : '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
 
@@ -91,17 +96,22 @@ export async function POST(request: Request) {
     }
 
     const apiKeys: Record<string, string> = {};
-    for (const provider of providers) {
+    if (modelSource === 'local') {
+      if (agent.provider !== 'gemini') return NextResponse.json({ error: 'El conector personal de esta entrega admite Google. ChatGPT requiere acceso autorizado y Claude permanece por API con las condiciones actuales de Anthropic.' }, { status: 409 });
+      if (!/^[a-f0-9-]{36}$/.test(deviceId)) return NextResponse.json({ error: 'Elegí tu conexión personal.' }, { status: 400 });
+      await requireOwnedModelDevice(user.id, deviceId);
+    }
+    for (const provider of modelSource === 'api' ? providers : []) {
       const apiKey = await getUserProviderApiKey(user.id, provider);
       if (apiKey) apiKeys[provider] = apiKey;
     }
-    if (!apiKeys[agent.provider]) {
+    if (modelSource === 'api' && !apiKeys[agent.provider]) {
       return NextResponse.json(
         { error: `Configurá una conexión API propia para ${agent.provider} antes de ejecutar este agente.`, provider: agent.provider },
         { status: 409 },
       );
     }
-    const executableSubordinates = availableAgents.filter(item => Boolean(apiKeys[item.provider]));
+    const executableSubordinates = availableAgents.filter(item => modelSource === 'local' ? item.provider === 'gemini' : Boolean(apiKeys[item.provider]));
     agent.subordinateIds = (agent.subordinateIds || []).filter(id =>
       executableSubordinates.some(item => item.id === id && item.roleType === 'independent'),
     );
@@ -158,7 +168,7 @@ export async function POST(request: Request) {
       agent_id: agent.id,
       conversation_id: conversationId,
       provider: agent.provider,
-      model: agent.model,
+      model: modelSource === 'local' ? 'gemini-cli-account-default' : agent.model,
       status: 'running',
       input_chars: message.length,
     }).select('id').single();
@@ -182,7 +192,8 @@ export async function POST(request: Request) {
       return [{ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 6000) }];
     });
 
-    const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys, undefined, async delegation => {
+    const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys,
+      modelSource === 'local' ? personalDeviceProvider(user.id, deviceId, request.signal) : undefined, async delegation => {
       const { error } = await service.from('agent_executions').update({ delegation }).eq('id', executionId);
       if (error) throw new AgentEngineError('PERSISTENCE_FAILED');
     }, (executingAgent, toolId, operation, input) => executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId));
@@ -208,6 +219,7 @@ export async function POST(request: Request) {
     const code = error instanceof Error ? error.message : '';
     if (executionService && executionId) {
       const knownCodes = [
+        'MODEL_DEVICE_OFFLINE', 'MODEL_DEVICE_UNAVAILABLE', 'MODEL_DEVICE_PROVIDER_UNSUPPORTED',
         'PROVIDER_AUTH_FAILED', 'PROVIDER_RATE_LIMITED', 'PROVIDER_TIMEOUT', 'PROVIDER_UNAVAILABLE', 'PROVIDER_CREDENTIAL_REQUIRED',
         'PROVIDER_EXECUTION_FAILED', 'MANAGER_DECISION_INVALID', 'DELEGATION_TARGET_NOT_ALLOWED',
         'AGENT_CONTEXT_TOO_LARGE', 'EMPTY_PROVIDER_RESPONSE', 'PERSISTENCE_FAILED',

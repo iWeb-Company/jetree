@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { UserSubscription } from '@/types';
 import { supabase } from '@/lib/supabase';
+import PersonalModelConnections from '@/components/PersonalModelConnections';
+import ClaudeMcpConnection from '@/components/ClaudeMcpConnection';
 
 type Provider = UserSubscription['provider'];
 
@@ -137,11 +139,13 @@ export default function OAuthSubscriptionsModal({
             <h3 className="flex items-center gap-2 text-lg font-bold text-white">
               <span>🔐</span> Conexiones de modelos
             </h3>
-            <p className="mt-1 text-xs text-gray-400">Configurá credenciales API propias para {userEmail}.</p>
+            <p className="mt-1 text-xs text-gray-400">Conectá tus cuentas o credenciales API para {userEmail}.</p>
           </div>
           <button onClick={onClose} aria-label="Cerrar" className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-800 bg-gray-900 text-gray-400 hover:text-white">✕</button>
         </div>
 
+        <ClaudeMcpConnection />
+        <PersonalModelConnections />
         <div className="space-y-3.5">
           {providers.map(provider => {
             const connection = subscriptions.find(item => item.provider === provider);

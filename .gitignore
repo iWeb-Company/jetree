@@ -1,5 +1,6 @@
 #dependencies
 /node_modules
+/connector/node_modules/
 /.pnp
 .pnp.js
 
@@ -35,3 +36,4 @@ yarn-error.log*
 *.dump*
 *.dpapi
 *.key
+/public/downloads/jetree-google-connector.tar.gz
