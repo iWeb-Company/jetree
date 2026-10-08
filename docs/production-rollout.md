@@ -54,8 +54,11 @@ Con un usuario de prueba:
 
 ## 6. OAuth de modelos
 
-La interfaz API personal y el catálogo dinámico están listos. OpenAI por consumo del plan requiere habilitación para la aplicación alojada; Anthropic requiere aprobación previa para ofrecer login de Claude en un producto tercero; Gemini CLI corresponde a un conector local por usuario. Hasta recibir esas aprobaciones no se deben activar botones que prometan OAuth de suscripción. La API permanece opcional y explícita.
+La interfaz API personal y el catálogo dinámico están listos. OpenAI por consumo del plan requiere habilitación para la aplicación alojada; Anthropic no admite ese login en Jetree bajo las condiciones actuales; el MCP de Jetree permite usar herramientas desde Claude oficial con autorización propia; Gemini CLI corresponde a un conector local por usuario. Hasta recibir esas aprobaciones no se deben activar botones que prometan OAuth de suscripción. La API permanece opcional y explícita.
 
 ## 7. Recuperación
 
 Si una migración o despliegue falla, conservar la imagen activa, revisar el job y restaurar la revisión anterior mediante el mecanismo de rollback de la VPS. Las conexiones OAuth y sus auditorías se mantienen cifradas; revocar una conexión elimina el token local de Jetree y solicita autorización nuevamente.
+
+
+Claude MCP y Google personal: seguir [la promoción y pruebas específicas](mcp-google-rollout.md), incluida la guía pública y el conector descargable. OpenAI continúa pendiente.

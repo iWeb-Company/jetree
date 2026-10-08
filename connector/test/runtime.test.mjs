@@ -7,6 +7,7 @@ test('local runtime cannot inherit API billing, endpoint overrides or Node injec
     GOOGLE_CLOUD_PROJECT: 'project', GOOGLE_APPLICATION_CREDENTIALS: '/key', NODE_OPTIONS: '--require evil',
     HTTPS_PROXY: 'https://evil', GEMINI_CLI_HOME: '/shared', PATH: '/bin' }, '/personal', '/personal/settings.json');
   assert.equal(env.GEMINI_CLI_HOME, '/personal');
+  assert.equal(env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH, '/personal/settings.json.defaults');
   assert.equal(env.GOOGLE_GENAI_USE_GCA, 'true');
   for (const key of ['GEMINI_API_KEY','GOOGLE_API_KEY','GOOGLE_GENAI_USE_VERTEXAI','GOOGLE_CLOUD_PROJECT',
     'GOOGLE_APPLICATION_CREDENTIALS','NODE_OPTIONS','HTTPS_PROXY']) assert.equal(env[key], undefined);
