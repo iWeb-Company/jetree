@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
-import { chromium } from '@playwright/test';
+import { chromium, expect } from '@playwright/test';
 
 const origin = process.env.JETREE_APP_URL;
 assert.equal(new URL(origin).hostname, '127.0.0.1');
@@ -50,8 +50,8 @@ try {
   await page.getByRole('button', { name: 'Crear y Activar Agente', exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: /Crear Nuevo Agente/ }).click();
   const freshForm = page.locator('form').filter({ has: page.getByRole('button', { name: 'Crear y Activar Agente' }) });
-  assert.equal(await freshForm.locator('input').first().inputValue(), '');
-  assert.equal(await freshForm.locator('select').nth(1).inputValue(), 'independent');
+  await expect(freshForm.locator('input').first()).toHaveValue('');
+  await expect(freshForm.locator('select').nth(1)).toHaveValue('independent');
   await page.getByRole('button', { name: 'Cancelar', exact: true }).click();
   console.log('PASS reopening create agent does not reuse the previous form');
   await page.reload();
