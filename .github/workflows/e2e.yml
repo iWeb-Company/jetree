@@ -37,6 +37,7 @@ jobs:
           node tests/integration/browser-security.mjs
           node tests/integration/real-auth.mjs
           node tests/integration/agent-form.mjs
+          node tests/integration/model-connectors.mjs
       - name: Stop disposable database
         if: always()
         run: npx --yes supabase@2.120.0 stop --workdir "$RUNNER_TEMP/jetree-supabase" --no-backup
