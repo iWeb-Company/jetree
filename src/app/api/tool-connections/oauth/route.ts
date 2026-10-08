@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
-import { appBaseUrl, consumeOAuthState, createOAuthState, storeToolConnection, toolOAuthCallbackUrl, type OAuthCredentials } from '@/lib/server/tool-connections';
+import { appBaseUrl, consumeOAuthState, createOAuthState, storeToolConnection, toolOAuthCallbackUrl, type GithubAccess, type OAuthCredentials } from '@/lib/server/tool-connections';
 import type { ToolProvider } from '@/lib/agents/tool-catalog';
+import { githubScopeGranted } from '@/lib/agents/github-access';
 
 export const runtime = 'nodejs';
 
@@ -20,7 +21,9 @@ export async function GET(request: Request) {
       if (provider !== 'github' && provider !== 'google_drive') return NextResponse.json({ error: 'Conector inválido.' }, { status: 400 });
       const clientId = provider === 'github' ? process.env.GITHUB_OAUTH_CLIENT_ID : process.env.GOOGLE_OAUTH_CLIENT_ID;
       if (!clientId) return NextResponse.json({ error: 'El OAuth del conector no está configurado en el servidor.' }, { status: 503 });
-      const state = await createOAuthState(user.id, provider as ToolProvider);
+      const access = url.searchParams.get('githubAccess');
+      if (provider === 'github' && access !== 'public' && access !== 'private') return NextResponse.json({ error: 'Elegí el alcance de GitHub antes de continuar.' }, { status: 400 });
+      const state = await createOAuthState(user.id, provider as ToolProvider, (access || 'public') as GithubAccess);
       const redirectUri = toolOAuthCallbackUrl();
       const authUrl = provider === 'github'
         ? new URL('https://github.com/login/oauth/authorize')
@@ -30,7 +33,7 @@ export async function GET(request: Request) {
       authUrl.searchParams.set('response_type', 'code');
       authUrl.searchParams.set('state', state);
       if (provider === 'github') {
-        authUrl.searchParams.set('scope', 'read:user public_repo');
+        authUrl.searchParams.set('scope', access === 'private' ? 'read:user repo' : 'read:user public_repo');
         authUrl.searchParams.set('allow_signup', 'false');
       } else {
         authUrl.searchParams.set('scope', 'openid email profile https://www.googleapis.com/auth/drive.file');
@@ -67,7 +70,8 @@ export async function GET(request: Request) {
       if (!response.ok) return failRedirect('oauth_exchange_failed');
       const token = await response.json() as { access_token?: string; scope?: string; token_type?: string; error?: string };
       if (!token.access_token) return failRedirect('oauth_exchange_failed');
-      credentials = { access_token: token.access_token, scope: token.scope, token_type: token.token_type };
+      if (!githubScopeGranted(token.scope, stateInfo.githubAccess)) return failRedirect('oauth_scope_incomplete');
+      credentials = { access_token: token.access_token, scope: token.scope, token_type: token.token_type, github_access: stateInfo.githubAccess };
       const account = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token.access_token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }, signal: AbortSignal.timeout(10_000) });
       if (!account.ok) return failRedirect('oauth_identity_failed');
       const profile = await account.json() as { login?: string };

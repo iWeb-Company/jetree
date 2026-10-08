@@ -2,12 +2,14 @@ import { toolErrorMessage } from '@/lib/tool-feedback';
 import { NextResponse } from 'next/server';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { executeAuthorizedTool } from '@/lib/server/agent-tools';
+import { getGithubConnectionAccess } from '@/lib/server/tool-connections';
 
 export const runtime = 'nodejs';
 
 function statusFor(code: string) {
   if (code === 'AUTH_REQUIRED') return 401;
   if (code === 'TOOL_AGENT_ACCESS_DENIED' || code === 'TOOL_NOT_AUTHORIZED') return 403;
+  if (code === 'TOOL_GITHUB_PRIVATE_ACCESS_REQUIRED') return 403;
   if (code === 'TOOL_CONNECTION_REQUIRED' || code === 'TOOL_CONNECTION_EXPIRED') return 409;
   if (code === 'TOOL_INPUT_INVALID' || code === 'TOOL_NOT_SUPPORTED') return 400;
   if (code === 'TOOL_APPROVAL_NOT_PENDING') return 409;
@@ -41,11 +43,13 @@ export async function GET(request: Request) {
     const service = getServiceSupabase();
     const [connections, approvals, calls] = await Promise.all([
       service.from('tool_connections').select('provider, status, scopes, expires_at, account_label, connected_at, updated_at').eq('user_id', user.id),
-      service.from('agent_tool_approvals').select('id, agent_id, tool_id, provider, operation, input, status, created_at').eq('user_id', user.id).eq('status', 'pending').order('created_at', { ascending: false }).limit(50),
+      service.from('agent_tool_approvals').select('id, agent_id, conversation_id, tool_id, provider, operation, input, status, created_at').eq('user_id', user.id).eq('status', 'pending').order('created_at', { ascending: false }).limit(50),
       service.from('agent_tool_calls').select('id, agent_id, provider, tool_id, operation, status, error_code, result_summary, cost_microunits, started_at, finished_at').eq('user_id', user.id).order('started_at', { ascending: false }).limit(100),
     ]);
     if (connections.error || approvals.error || calls.error) return NextResponse.json({ error: 'No se pudo cargar el estado de herramientas.' }, { status: 500 });
-    return NextResponse.json({ connections: connections.data || [], pendingApprovals: approvals.data || [], calls: calls.data || [] });
+    const github = connections.data?.find(item => item.provider === 'github' && item.status === 'connected');
+    const githubAccess = github ? await getGithubConnectionAccess(user.id) : 'public';
+    return NextResponse.json({ connections: (connections.data || []).map(item => item.provider === 'github' ? { ...item, githubAccess } : item), pendingApprovals: approvals.data || [], calls: calls.data || [] }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch {
     return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
   }

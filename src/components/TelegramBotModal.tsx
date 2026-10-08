@@ -85,7 +85,7 @@ export default function TelegramBotModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-[#080c14] border border-cyan-950/80 rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 space-y-5">
+      <div className="bg-[#080c14] border border-cyan-950/80 rounded-2xl max-w-xl w-full max-h-[90dvh] overflow-y-auto shadow-2xl p-4 sm:p-6 space-y-5">
         
         {/* Header */}
         <div className="flex items-center justify-between border-b border-cyan-950/60 pb-4">
