@@ -44,6 +44,9 @@ export async function callAIProvider(agent: Agent, prompt: string, apiKeys: Reco
 
 export function providerErrorMessage(code: string): string {
   switch (code) {
+    case 'MODEL_DEVICE_OFFLINE': return 'Tu conector personal está desconectado o fue revocado. Encendelo y volvé a intentar. No se usó la API.';
+    case 'MODEL_DEVICE_UNAVAILABLE': return 'La conexión personal no pudo completar la respuesta. Revisá el conector; no se cambió a la API.';
+    case 'MODEL_DEVICE_PROVIDER_UNSUPPORTED': return 'Este proveedor todavía no está habilitado en el conector personal.';
     case 'PROVIDER_AUTH_FAILED': return 'El proveedor rechazó la credencial. Revisá la conexión API.';
     case 'PROVIDER_RATE_LIMITED': return 'El proveedor alcanzó un límite de uso o cuota. Revisá la cuenta e intentá más tarde.';
     case 'PROVIDER_TIMEOUT': return 'El proveedor tardó demasiado en responder. La ejecución quedó como fallida.';

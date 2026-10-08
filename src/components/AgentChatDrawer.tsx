@@ -2,6 +2,7 @@
 
 import { mergeToolMessage } from '@/lib/tool-feedback';
 import ChatApprovals from '@/components/ChatApprovals';
+import { PersonalModelDevice, personalModelHeaders } from '@/components/PersonalModelConnections';
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Agent, ChatMessage, AgentActivityLog } from '@/types';
@@ -34,6 +35,23 @@ export default function AgentChatDrawer({
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deviceId, setDeviceId] = useState('');
+  const [modelDevices, setModelDevices] = useState<PersonalModelDevice[]>([]);
+  useEffect(() => {
+    setDeviceId('');
+    if (!isOpen || agent?.provider !== 'gemini') return;
+    let active = true;
+    const load = async () => {
+      try {
+        const response = await fetch('/api/model-devices', { headers: await personalModelHeaders(), cache: 'no-store' });
+        const body = await response.json();
+        if (active) setModelDevices(response.ok ? body.devices || [] : []);
+      } catch { if (active) setModelDevices([]); }
+    };
+    load();
+    const timer = setInterval(load, 10_000);
+    return () => { active = false; clearInterval(timer); };
+  }, [agent?.id, agent?.provider, isOpen]);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [selectedToolId, setSelectedToolId] = useState('');
   const [selectedOperation, setSelectedOperation] = useState('');
@@ -154,6 +172,8 @@ export default function AgentChatDrawer({
           agentId: agent.id,
           conversationId,
           message: userMsgText,
+          modelSource: deviceId ? 'local' : 'api',
+          deviceId: deviceId || undefined,
         }),
       });
 
@@ -371,6 +391,15 @@ export default function AgentChatDrawer({
 
         {/* Input Bar */}
         <div className="p-4 border-t border-cyan-950/60 bg-[#0b101d]/60 shrink-0">
+          {agent.provider === 'gemini' && <label className="mb-3 block text-xs text-gray-400">
+            Conexión para esta conversación
+            <select aria-label="Conexión del modelo" disabled={loading} value={deviceId} onChange={event => setDeviceId(event.target.value)} className="mt-1 w-full min-w-0 rounded border border-cyan-950 bg-[#05070b] p-2 text-white">
+              <option value="">API personal · modelo configurado en el agente</option>
+              {modelDevices.map(device => <option key={device.id} value={device.id}>{device.name} · Google / selección automática · {device.online ? 'conectado' : 'desconectado'}</option>)}
+              {deviceId && !modelDevices.some(device => device.id === deviceId) && <option value={deviceId}>Equipo no disponible · reconectar</option>}
+            </select>
+            {deviceId && <span className="mt-1 block">Usa tu cuenta Google en ese equipo. Si falla, no se usa la API.</span>}
+          </label>}
           <form onSubmit={handleSendMessage} className="flex gap-2">
             <input
               type="text"

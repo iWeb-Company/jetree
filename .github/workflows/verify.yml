@@ -22,6 +22,8 @@ jobs:
       - run: npm ci
       - run: npm audit --omit=dev --audit-level=high
       - run: npm test
+      - name: Verify isolated personal connector contract
+        run: node --test connector/test/*.test.mjs
       - name: Verify real nginx request limits
         run: |
           sudo apt-get update
@@ -72,6 +74,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/isolation.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-isolation.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/function-permissions.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/model-devices.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/mcp.sql
       - name: Replay the audited existing schema and reconcile
         run: |
           psql -X -v ON_ERROR_STOP=1 -c 'create database jetree_replay'

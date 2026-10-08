@@ -1,6 +1,6 @@
 # Cuentas de modelos y conector por usuario
 
-Estado al 8 de octubre de 2026: diseño de integración; OAuth por suscripción y el conector local todavía no están implementados. El catálogo de modelos de esta entrega usa la conexión API personal existente.
+Estado al 8 de octubre de 2026: conector personal Google implementado para pruebas en dev, todavía sin validar una sesión Google real. ChatGPT por suscripción requiere acceso autorizado. Anthropic respondió al responsable que Claude.ai Free/Pro/Max no puede integrarse en Jetree bajo las condiciones actuales: El chat Claude dentro de Jetree permanece por API; el MCP remoto permite usar herramientas de Jetree desde la aplicación oficial de Claude con autorización individual. El catálogo completo por cuenta y Telegram por conector personal no están habilitados; el chat web permite elegir explícitamente API o un equipo Google propio con el modelo predeterminado del Gemini CLI.
 
 ## Objetivo
 
@@ -12,18 +12,20 @@ Cada usuario conecta su propia cuenta. Una instalación local pertenece a un usu
 | --- | --- | --- |
 | OpenAI | Sign in with ChatGPT admite consumo del plan para aplicaciones locales elegibles | Una aplicación alojada como Jetree necesita solicitar acceso como partner antes de ofrecerlo desde la VPS. |
 | Google | Gemini CLI permite iniciar sesión con Google y usar las cuotas correspondientes a la cuenta | Preparar un conector individual basado en el flujo oficial del CLI; OAuth de Gemini API sigue siendo consumo API. |
-| Anthropic | Claude Code admite cuentas Claude, pero Anthropic restringe ofrecer ese login en productos de terceros | Obtener aprobación previa de Anthropic; instalar un conector local no elimina esta condición. |
+| Anthropic | No permite login Claude.ai ni consumir planes Free/Pro/Max en Jetree bajo las condiciones actuales | API personal soportada. Solo un acuerdo directo distinto podría cambiar la situación; soporte no indicó un proceso para solicitarlo. |
 
 Fuentes oficiales: [OpenAI](https://developers.openai.com/siwc/token-sharing-open-source), [registro y sesión](https://developers.openai.com/siwc/token-sharing-open-source/sign-in), [modelos e inferencia](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference), [Gemini CLI](https://geminicli.com/docs/get-started/authentication/), [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview).
 
-## Contrato del conector propuesto
+## Contrato del conector
 
-1. El usuario autenticado crea una vinculación de corta duración desde Jetree. Un código de un solo uso vincula una instalación y su clave pública exclusivamente con ese usuario.
-2. El conector abre el login oficial en la computadora del usuario. Las credenciales quedan en el almacén seguro del sistema operativo, separadas por cuenta; Jetree no recibe la contraseña ni reutiliza un client ID de otro producto.
-3. La instalación abre una conexión saliente TLS a Jetree. Los trabajos se autorizan por usuario, instalación, conversación y cuenta; no se abre un puerto público en la computadora.
-4. El agente selecciona una conexión explícita. La pantalla muestra cuenta, fuente de consumo, modelos disponibles y disponibilidad de la instalación. Una sesión vencida solicita reconexión, sin cobrar por API automáticamente.
+1. El usuario autenticado crea un código aleatorio de 256 bits, de un solo uso y 5 minutos de vigencia. Vincula una instalación exclusivamente a su usuario; el servidor guarda hashes de los códigos y credenciales de transporte.
+2. El conector abre el login oficial en la computadora del usuario. Google administra su OAuth en un perfil local exclusivo, protegido con permisos de archivo/ACL; no se promete que todos los sistemas dispongan de keychain. Jetree no recibe la contraseña ni el token Google y no reutiliza un client ID de otro producto.
+3. La instalación consulta trabajos mediante TLS saliente, exclusivamente en los dominios oficiales de Jetree. El chat verifica su conversación y autoriza los trabajos por usuario e instalación; una credencial de dispositivo no permite consultar agentes o conversaciones. No se abre un puerto público en la computadora.
+4. El usuario selecciona una conexión explícita en el chat. La pantalla muestra equipo, fuente de consumo, selección automática de modelos Google y disponibilidad. Una sesión vencida solicita reconexión, sin cobrar por API automáticamente; el catálogo completo por cuenta queda pendiente.
 5. Las herramientas externas mantienen la autorización y aprobación en Jetree. El runtime de modelos no recibe permisos generales para ejecutar comandos o acceder a archivos locales.
-6. Desvincular revoca la instalación y cancela trabajos pendientes. Un equipo apagado deja esa conexión fuera de línea; Telegram necesita una instalación encendida o una modalidad alojada autorizada.
+6. Desvincular revoca la instalación y elimina trabajos pendientes. Un equipo apagado deja la conexión fuera de línea. La consulta del chat tiene un límite total de 50 segundos para encajar en el proxy actual. Los prompts/resultados temporales se eliminan al terminar/cancelar la petición; residuos de un proceso caído se limpian en la próxima actividad del relay, sin permitir su ejecución después de vencer.
+
+Instalación: [connector/README.md](../connector/README.md). Solicitudes a proveedores: [provider-access-requests.md](provider-access-requests.md). OpenAI sigue pendiente. El MCP de Claude no ofrece inferencia ni reutiliza credenciales de Claude: autoriza agentes seleccionados, lectura y propuestas de escritura que se aprueban dentro de Jetree. La guía pública está en `/ayuda/conexiones`.
 
 El catálogo OAuth de OpenAI usa `models` y `slug`, distinto del catálogo API `data` e `id`. Responses por cuenta requiere streaming y `store: false`; una desconexión o respuesta incompleta no se registra como éxito. La implementación debe seguir la documentación vigente, validar PKCE, estado y tokens, y renovar sesiones de forma coordinada por cuenta.
 

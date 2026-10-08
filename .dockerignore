@@ -1,6 +1,7 @@
 .git
 .next
 node_modules
+connector/node_modules
 .env*
 *.env
 *.dump*
