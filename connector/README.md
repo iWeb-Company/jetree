@@ -7,6 +7,8 @@ Cada usuario instala su conector en su propio equipo con Node.js 22 o superior. 
 1. Desde `/ayuda/conexiones#google`, descargar el archivo del conector y extraerlo en una carpeta propia. No se necesita acceso al repositorio privado.
 2. Ejecutar `npm ci` para instalar la versión fijada de Gemini CLI.
 3. Ejecutar `npm run login`; completar **Login with Google** en el navegador oficial y salir con `/quit`.
+
+Si aparece la pregunta de confianza, elegir **Don't trust**. No se necesita confiar en la carpeta padre. Si el CLI se reinicia para aplicar esa elección y muestra «Login no completado», ejecutar `npm run login` nuevamente y completar el login; ese mensaje no significa que Google ya esté conectado.
 4. En Jetree, abrir **Conexiones de modelos → Cuenta Google → Vincular mi equipo**.
 5. Ejecutar `npm run pair`, ingresar el dominio exacto de dev o producción, el código (caduca en 5 minutos) y el nombre del equipo.
 6. Ejecutar `npm start`, mantener esta terminal abierta, y actualizar el estado del equipo en Jetree.

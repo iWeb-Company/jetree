@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { childEnvironment, decodeReply, isolatedSettings, validateJob, validateOrigin, plainCliPrompt } from '../runtime.mjs';
+import { childEnvironment, decodeReply, isolatedSettings, isolatedCliArguments, validateJob, validateOrigin, plainCliPrompt } from '../runtime.mjs';
 
 test('local runtime cannot inherit API billing, endpoint overrides or Node injection', () => {
   const env = childEnvironment({ GEMINI_API_KEY: 'secret', GOOGLE_API_KEY: 'secret', GOOGLE_GENAI_USE_VERTEXAI: 'true',
@@ -13,8 +13,9 @@ test('local runtime cannot inherit API billing, endpoint overrides or Node injec
     'GOOGLE_APPLICATION_CREDENTIALS','NODE_OPTIONS','HTTPS_PROXY']) assert.equal(env[key], undefined);
   const settings = isolatedSettings('/deny.toml');
   assert.deepEqual(settings.tools.core, []);
-  assert.equal(settings.admin.mcp.enabled, false);
-  assert.equal(settings.admin.extensions.enabled, false);
+  assert.deepEqual(settings.mcpServers, {});
+  assert.deepEqual(settings.mcp.allowed, ['__jetree_no_mcp__']);
+  assert.deepEqual(isolatedCliArguments('/deny.toml'), ['--admin-policy', '/deny.toml', '--extensions', 'none', '--allowed-mcp-server-names', '__jetree_no_mcp__']);
   assert.equal(settings.hooksConfig.enabled, false);
   assert.equal(settings.security.auth.enforcedType, 'oauth-personal');
 });
