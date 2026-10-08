@@ -9,7 +9,10 @@ import { validateOrigin, childEnvironment, isolatedSettings, decodeReply, valida
 const root = join(homedir(), '.jetree-personal');
 const providerHome = join(root, 'google');
 const workspace = join(root, 'empty-workspace');
-const settingsPath = join(root, 'system-settings.json');
+const settingsPath = join(providerHome, '.gemini', 'settings.json');
+// Use the supported isolated user configuration. System files require admin
+// ownership and are ignored in a normal user's home directory.
+const absentSystemPath = join(root, 'no-system-settings.json');
 const policyPath = join(root, 'deny-tools.toml');
 const connectionPath = join(root, 'connection.json');
 const cliRoot = join(dirname(fileURLToPath(import.meta.url)), 'node_modules', '@google', 'gemini-cli');
@@ -28,9 +31,14 @@ async function protect(path, directory = false) {
 }
 
 async function setup() {
+  for (const path of [absentSystemPath, absentSystemPath + '.defaults']) {
+    try { await stat(path); throw new Error('Configuración de sistema inesperada en el perfil aislado.'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
   await mkdir(root, { recursive: true, mode: 0o700 });
   await protect(root, true);
   await mkdir(providerHome, { recursive: true, mode: 0o700 });
+  await mkdir(dirname(settingsPath), { recursive: true, mode: 0o700 });
   await mkdir(workspace, { recursive: true, mode: 0o700 });
   await writeFile(policyPath, '[[rule]]\ntoolName = "*"\ndecision = "deny"\npriority = 999\n', { mode: 0o600 });
   await writeFile(settingsPath, JSON.stringify(isolatedSettings(policyPath)), { mode: 0o600 });
@@ -43,8 +51,8 @@ async function setup() {
 
 async function runGoogle(cliPath, prompt, deadline) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [cliPath, '--output-format', 'json'], {
-      cwd: workspace, env: childEnvironment(process.env, providerHome, settingsPath),
+    const child = spawn(process.execPath, [cliPath, '--admin-policy', policyPath, '--output-format', 'json'], {
+      cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath),
       shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     });
     activeChild = child;
@@ -82,7 +90,7 @@ async function main() {
   const cliPath = await setup();
   if (mode === 'login') {
     console.log('Iniciá sesión con Google en el CLI oficial. Luego cerralo con /quit. No ingreses una API key.');
-    const child = spawn(process.execPath, [cliPath], { cwd: workspace, env: childEnvironment(process.env, providerHome, settingsPath), shell: false, stdio: 'inherit' });
+    const child = spawn(process.execPath, [cliPath, '--admin-policy', policyPath], { cwd: workspace, env: childEnvironment(process.env, providerHome, absentSystemPath), shell: false, stdio: 'inherit' });
     activeChild = child;
     await new Promise((resolve, reject) => { child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error('Login no completado.'))); });
     return;

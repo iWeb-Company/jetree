@@ -14,6 +14,7 @@ export function childEnvironment(parent, home, systemPath) {
   }
   env.GEMINI_CLI_HOME = home;
   env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = systemPath;
+  env.GEMINI_CLI_SYSTEM_DEFAULTS_PATH = systemPath + '.defaults';
   env.GOOGLE_GENAI_USE_GCA = 'true';
   env.GEMINI_CLI_SURFACE = 'jetree-personal-connector';
   // Supported by the pinned CLI launcher. Keep cancellation in a single process.
@@ -23,7 +24,6 @@ export function childEnvironment(parent, home, systemPath) {
 
 export function isolatedSettings(policyPath) {
   return {
-    adminPolicyPaths: [policyPath],
     policyPaths: [policyPath],
     security: { auth: { selectedType: 'oauth-personal', enforcedType: 'oauth-personal' }, disableYoloMode: true, disableAlwaysAllow: true },
     tools: { core: [] },
