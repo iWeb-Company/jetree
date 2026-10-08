@@ -1,0 +1,12 @@
+import Link from 'next/link';
+import InformationPage from '@/components/InformationPage';
+
+export default function Privacy() {
+  return <InformationPage title="Privacidad">
+    <section><h2 className="text-xl font-semibold">Qué información usa Jetree</h2><p>Jetree es un workspace administrado por iWeb. Guarda la cuenta de acceso, departamentos, agentes, instrucciones, tareas, conversaciones y registros de ejecución. Las conversaciones del departamento son compartidas con las personas autorizadas y los administradores globales.</p></section>
+    <section><h2 className="text-xl font-semibold">Proveedores y conexiones</h2><p>Supabase proporciona autenticación y almacenamiento de la aplicación. Para responder, Jetree envía la solicitud, las instrucciones y una parte del historial al proveedor de IA elegido. Si habilitás un bot, Telegram transporta sus mensajes. Las operaciones de GitHub y Google Drive usan la conexión de quien las ejecuta; las escrituras requieren aprobación. Los proveedores externos aplican sus propias políticas.</p></section>
+    <section><h2 className="text-xl font-semibold">Credenciales y seguridad</h2><p>Las claves de proveedores y tokens de herramientas se guardan cifrados en el servidor. Podés revocar tus conexiones desde los paneles correspondientes. No incluyas contraseñas, tokens ni información sensible innecesaria en los mensajes o instrucciones de los agentes.</p></section>
+    <section><h2 className="text-xl font-semibold">Conservación y respaldos</h2><p>Los datos operativos se conservan mientras el workspace los utiliza o hasta que se gestione su eliminación. Archivar un agente o departamento permite recuperarlo y no borra su historial. Existen respaldos cifrados en Google Drive con retención diaria y mensual; una eliminación en la base activa no retira inmediatamente las copias existentes. Antes de restaurar una copia se deben revisar las solicitudes de eliminación posteriores.</p></section>
+    <section><h2 className="text-xl font-semibold">Acceso, corrección y eliminación</h2><p>En <Link href="/datos" className="text-cyan-300 underline">Tus datos</Link> podés descargar los datos que tus permisos permiten consultar y solicitar corrección o eliminación. El administrador verifica tu identidad y el alcance de los datos compartidos antes de actuar. Contacto: <a className="text-cyan-300 underline" href="mailto:facundod@iwebtecnology.com">facundod@iwebtecnology.com</a>.</p></section>
+  </InformationPage>;
+}

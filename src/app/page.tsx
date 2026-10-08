@@ -653,7 +653,7 @@ export default function Home() {
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Top Navbar */}
-        <header className="h-20 bg-[#080c14]/80 backdrop-blur border-b border-cyan-950/40 px-8 flex items-center justify-between sticky top-0 z-20">
+        <header className="min-h-20 bg-[#080c14]/80 backdrop-blur border-b border-cyan-950/40 px-4 py-4 md:px-8 flex flex-wrap gap-3 items-center justify-between sticky top-0 z-20">
           <div>
             <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Centro de Operaciones</h2>
             <p className="text-xs text-gray-500 mt-0.5">iWeb Enterprise Workspace • Orquestación Multi-Agente & Telegram</p>
@@ -708,8 +708,18 @@ export default function Home() {
           </div>
         </header>
 
+        <nav aria-label="Navegación móvil" className="md:hidden flex flex-wrap gap-2 border-b border-cyan-950/40 p-3">
+          {([
+            ['overview', 'Panel General'], ['departments', 'Estructura de Nodos'],
+            ['agents', 'Agentes IA'], ['activity', 'Monitoreo en Vivo'],
+          ] as const).map(([tab, label]) => (
+            <button key={tab} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-xs ${activeTab === tab ? 'bg-cyan-500/20 text-cyan-200' : 'bg-gray-900 text-gray-300'}`}>{label}</button>
+          ))}
+          <button onClick={handleLogout} className="rounded-lg px-3 py-2 text-xs text-red-300">Cerrar Sesión</button>
+        </nav>
+
         {/* Viewport Principal */}
-        <main className="p-8 space-y-8 max-w-7xl mx-auto w-full flex-1">
+        <main className="p-4 md:p-8 space-y-8 max-w-7xl mx-auto w-full flex-1">
           {workspaceError && (
             <div role="alert" className="rounded-xl border border-amber-900 bg-amber-950/30 p-3 text-xs text-amber-200">
               {workspaceError}

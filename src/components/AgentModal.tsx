@@ -52,7 +52,21 @@ export default function AgentModal({
   const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
-    if (isOpen) setDepartmentId(agentToEdit?.departmentId || '');
+    if (!isOpen) return;
+    setName(agentToEdit?.name || '');
+    setDescription(agentToEdit?.description || '');
+    setDepartmentId(agentToEdit?.departmentId || '');
+    setRoleType(agentToEdit?.roleType || 'independent');
+    setProvider(agentToEdit?.provider || 'gemini');
+    setModel(agentToEdit?.model || 'gemini-3.5-flash-lite');
+    setSystemPrompt(agentToEdit?.systemPrompt || 'Eres un asistente especialista en...');
+    setAvatar(agentToEdit?.avatar || (agentToEdit?.roleType === 'manager' ? '👨‍💼' : '🤖'));
+    setSelectedSubordinates(agentToEdit?.subordinateIds || []);
+    setEnabledPluginIds((agentToEdit?.enabledPluginIds || []).filter(id => ALL_CHATGPT_WORK_PLUGINS.some(plugin => plugin.id === id)));
+    setModalTab('general');
+    setPluginCategoryFilter('all');
+    setPluginSearchQuery('');
+    setSaveError('');
   }, [isOpen, agentToEdit]);
 
   const selectedDepartmentId = departments.some(department => department.id === departmentId)

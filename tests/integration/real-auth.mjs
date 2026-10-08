@@ -26,6 +26,23 @@ async function api(user, path, method = 'GET', body) {
   return { status: response.status, body: await response.json() };
 }
 try {
+  // This destructive quota fixture is restricted to disposable local CI.
+  if (process.env.JETREE_DISPOSABLE_CI === 'true') {
+    const usageDate = new Date().toISOString().slice(0, 10);
+    try {
+      db(await service.from('workspace_daily_execution_usage').delete().eq('usage_date', usageDate), 'reset disposable quota');
+      const reservations = await Promise.all(Array.from({ length: 20 }, () => service.rpc('consume_workspace_execution_quota', { max_runs: 3 })));
+      assert.equal(new Date().toISOString().slice(0, 10), usageDate, 'quota test must not span UTC midnight');
+      const allowed = reservations.map(result => db(result, 'concurrent quota reservation'));
+      assert.equal(allowed.filter(Boolean).length, 3);
+      assert.equal(allowed.filter(value => value === false).length, 17);
+      const usage = db(await service.from('workspace_daily_execution_usage').select('executions').eq('usage_date', usageDate).single(), 'read disposable quota');
+      assert.equal(usage.executions, 3);
+      pass('atomic daily quota admits exactly three of twenty concurrent requests');
+    } finally {
+      db(await service.from('workspace_daily_execution_usage').delete().eq('usage_date', usageDate), 'clean disposable quota');
+    }
+  }
   // Refuse broad reads in a project containing business data.
   for (const table of ['departments', 'agents', 'tasks']) {
     const result = await service.from(table).select('id', { head: true, count: 'exact' });
@@ -55,6 +72,22 @@ try {
     db(await users[i].client.from('messages').insert({ conversation_id: conversation.id, author_user_id: users[i].id, role: 'user', content: 'Synthetic persisted message' }), 'persist message');
   }
   pass('authenticated CRUD and server-derived ownership');
+  assert.equal((await fetch(origin + '/api/data-export')).status, 401);
+  for (let i = 0; i < 2; i++) {
+    const exported = await api(users[i], '/api/data-export');
+    assert.equal(exported.status, 200);
+    assert.deepEqual(exported.body.tables.agents.map(row => row.id), [agents[i]]);
+    assert.deepEqual(exported.body.tables.profiles.map(row => row.id), [users[i].id]);
+    assert.equal(exported.body.tables.messages.length, 1);
+    assert.equal(exported.body.tables.messages[0].content, 'Synthetic persisted message');
+    assert.ok(!('tool_connections' in exported.body.tables));
+    assert.ok(!('provider_connection_secrets' in exported.body.tables));
+  }
+  const adminExport = await api(users[2], '/api/data-export');
+  assert.equal(adminExport.status, 200);
+  assert.equal(adminExport.body.tables.agents.length, 2);
+  assert.deepEqual(adminExport.body.tables.profiles.map(row => row.id), [users[2].id]);
+  pass('data export requires Auth and respects member isolation and admin visibility');
   for (let i = 0; i < 2; i++) {
     const user = users[i], other = 1 - i;
     const list = await api(user, '/api/agents'); assert.equal(list.status, 200); assert.deepEqual(list.body.agents.map(x => x.id), [agents[i]]);
@@ -144,6 +177,12 @@ try {
     await page.locator('input[type=password]').fill(users[i].password);
     await page.getByRole('button', { name: 'Acceder al Workspace' }).click();
     await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 30000 });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const mobileNav = page.getByRole('navigation', { name: 'Navegación móvil' });
+    await mobileNav.getByRole('button', { name: 'Agentes IA', exact: true }).click();
+    await page.getByRole('button', { name: '+ Crear Nuevo Agente' }).waitFor();
+    await mobileNav.getByRole('button', { name: 'Panel General' }).click();
+    await page.setViewportSize({ width: 1280, height: 900 });
     await page.reload(); await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 30000 });
     await page.getByRole('button', { name: 'Herramientas', exact: true }).click();
     await page.getByRole('heading', { name: '🐙 GitHub', exact: true }).waitFor();
