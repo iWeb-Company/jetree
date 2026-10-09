@@ -18,7 +18,7 @@ globalThis.fetch = async (input, options) => {
   const headers = new Headers(options?.headers);
   const key = headers.get('authorization')?.replace(/^Bearer /,'') || headers.get('x-api-key') || headers.get('x-goog-api-key') || '';
   // No real key leaves this disposable test process.
-  if (!key.includes('synthetic-')) throw new Error('Fixture refuses non-synthetic provider key');
+  if (!key.toLowerCase().includes('synthetic-')) throw new Error('Fixture refuses non-synthetic provider key');
   if (!key.startsWith(issuer[0]) || key.endsWith('-invalid')) return Response.json({ error: 'Rejected synthetic key' }, { status: 401 });
   if (options?.method === 'POST') {
     const body = JSON.parse(options.body);

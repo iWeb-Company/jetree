@@ -33,7 +33,7 @@ try {
   for (let i = 0; i < prefixes.length; i++) {
     const key = prefixes[i] + randomBytes(12).toString('hex');
     const result = await api(own, '/api/provider-connections', 'POST', { apiKey: key });
-    assert.equal(result.status, 200); assert.equal(result.body.connection.provider, providers[i]);
+    assert.equal(result.status, 200, `Detect ${providers[i]}: ${result.body.code || result.body.error || result.status}`); assert.equal(result.body.connection.provider, providers[i]);
     assert.equal(JSON.stringify(result.body).includes(key), false);
     const stored = db(await service.from('provider_connection_secrets').select('ciphertext').eq('connection_id', result.body.connection.id).single());
     assert.notEqual(stored.ciphertext, key); connections.push(result.body.connection);
