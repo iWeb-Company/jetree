@@ -53,12 +53,11 @@ export async function getUserProviderApiKey(
     .eq('user_id', userId)
     .eq('provider', provider);
   if (connectionId) query = query.eq('id', connectionId);
-  const { data: connections, error } = await query.order('connected_at', { ascending: true });
+  else query = query.eq('metadata->>is_default', 'true');
+  const { data: connection, error } = await query.maybeSingle();
 
   if (error) throw new Error('PROVIDER_CONNECTION_LOOKUP_FAILED');
   // Select first, then check status. Never silently switch a failed default key.
-  const connection = connectionId ? connections?.[0]
-    : connections?.find(item => item.metadata?.is_default);
   if (!connection || !['configured', 'connected'].includes(connection.status) || connection.connection_type !== 'api_key') return null;
 
   const { data: secret, error: secretError } = await service
