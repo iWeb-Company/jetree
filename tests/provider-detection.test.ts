@@ -6,6 +6,7 @@ import { retiredModelPath } from '../src/lib/model-access';
 test('recognizable API keys are validated only at the matching issuer, without redirects or inference', async () => {
   for (const [key, provider, host] of [
     ['AIzaSyntheticKey', 'gemini', 'generativelanguage.googleapis.com'],
+    ['AQ.Ab-synthetic.auth_key', 'gemini', 'generativelanguage.googleapis.com'],
     ['sk-ant-api03-synthetic', 'claude', 'api.anthropic.com'],
     ['sk-proj-synthetic', 'openai', 'api.openai.com'],
     ['sk-or-v1-synthetic', 'custom', 'openrouter.ai'],
