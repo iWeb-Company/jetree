@@ -43,17 +43,22 @@ export function decryptProviderSecret(secret: EncryptedSecret): string {
 
 export async function getUserProviderApiKey(
   userId: string,
-  provider: 'openai' | 'gemini' | 'claude' | 'custom',
+  provider: 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek',
+  connectionId?: string,
 ): Promise<string | null> {
   const service = getServiceSupabase();
-  const { data: connection, error } = await service
+  let query = service
     .from('provider_connections')
-    .select('id, status, connection_type')
+    .select('id, status, connection_type, metadata')
     .eq('user_id', userId)
-    .eq('provider', provider)
-    .maybeSingle();
+    .eq('provider', provider);
+  if (connectionId) query = query.eq('id', connectionId);
+  const { data: connections, error } = await query.order('connected_at', { ascending: true });
 
   if (error) throw new Error('PROVIDER_CONNECTION_LOOKUP_FAILED');
+  // Select first, then check status. Never silently switch a failed default key.
+  const connection = connectionId ? connections?.[0]
+    : connections?.find(item => item.metadata?.is_default);
   if (!connection || !['configured', 'connected'].includes(connection.status) || connection.connection_type !== 'api_key') return null;
 
   const { data: secret, error: secretError } = await service

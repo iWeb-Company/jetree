@@ -6,11 +6,10 @@ import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-ad
 import { Agent, AIProvider } from '@/types';
 import { executeAuthorizedTool } from '@/lib/server/agent-tools';
 import { selectedModelSource } from '@/lib/model-device-contract';
-import { personalDeviceProvider, requireOwnedModelDevice } from '@/lib/server/model-devices';
 
 export const runtime = 'nodejs';
 
-const supportedProviders: AIProvider[] = ['openai', 'gemini', 'claude', 'custom'];
+const supportedProviders: AIProvider[] = ['openai', 'gemini', 'claude', 'custom', 'deepseek'];
 
 function toAgent(row: Record<string, any>): Agent {
   const subordinateIds = Array.isArray(row.subordinate_ids) ? row.subordinate_ids as string[] : [];
@@ -48,7 +47,7 @@ export async function POST(request: Request) {
     const { client, user } = await requireUser(request);
     const body = await request.json();
     const modelSource = selectedModelSource(body.modelSource);
-    const deviceId = typeof body.deviceId === 'string' ? body.deviceId : '';
+    if (modelSource !== 'api') return NextResponse.json({ error: 'Jetree acepta únicamente conexiones API.' }, { status: 410 });
     const agentId = typeof body.agentId === 'string' ? body.agentId : '';
     const message = typeof body.message === 'string' ? body.message.trim() : '';
 
@@ -96,22 +95,17 @@ export async function POST(request: Request) {
     }
 
     const apiKeys: Record<string, string> = {};
-    if (modelSource === 'local') {
-      if (agent.provider !== 'gemini') return NextResponse.json({ error: 'El conector personal de esta entrega admite Google. ChatGPT requiere acceso autorizado y Claude permanece por API con las condiciones actuales de Anthropic.' }, { status: 409 });
-      if (!/^[a-f0-9-]{36}$/.test(deviceId)) return NextResponse.json({ error: 'Elegí tu conexión personal.' }, { status: 400 });
-      await requireOwnedModelDevice(user.id, deviceId);
-    }
-    for (const provider of modelSource === 'api' ? providers : []) {
+    for (const provider of providers) {
       const apiKey = await getUserProviderApiKey(user.id, provider);
       if (apiKey) apiKeys[provider] = apiKey;
     }
-    if (modelSource === 'api' && !apiKeys[agent.provider]) {
+    if (!apiKeys[agent.provider]) {
       return NextResponse.json(
         { error: `Configurá una conexión API propia para ${agent.provider} antes de ejecutar este agente.`, provider: agent.provider },
         { status: 409 },
       );
     }
-    const executableSubordinates = availableAgents.filter(item => modelSource === 'local' ? item.provider === 'gemini' : Boolean(apiKeys[item.provider]));
+    const executableSubordinates = availableAgents.filter(item => Boolean(apiKeys[item.provider]));
     agent.subordinateIds = (agent.subordinateIds || []).filter(id =>
       executableSubordinates.some(item => item.id === id && item.roleType === 'independent'),
     );
@@ -168,7 +162,7 @@ export async function POST(request: Request) {
       agent_id: agent.id,
       conversation_id: conversationId,
       provider: agent.provider,
-      model: modelSource === 'local' ? 'gemini-cli-account-default' : agent.model,
+      model: agent.model,
       status: 'running',
       input_chars: message.length,
     }).select('id').single();
@@ -193,7 +187,7 @@ export async function POST(request: Request) {
     });
 
     const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys,
-      modelSource === 'local' ? personalDeviceProvider(user.id, deviceId, request.signal) : undefined, async delegation => {
+      undefined, async delegation => {
       const { error } = await service.from('agent_executions').update({ delegation }).eq('id', executionId);
       if (error) throw new AgentEngineError('PERSISTENCE_FAILED');
     }, (executingAgent, toolId, operation, input) => executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId));

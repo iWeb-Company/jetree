@@ -2,163 +2,78 @@ import { NextResponse } from 'next/server';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { decryptProviderSecret, encryptProviderSecret } from '@/lib/server/provider-secrets';
 import { providerHealthMessage, validateProviderApiKey } from '@/lib/server/provider-health';
+import { detectProviderApiKey } from '@/lib/server/provider-detection';
+import { readBoundedJson } from '@/lib/server/bounded-json';
 
 export const runtime = 'nodejs';
-
-const providers = ['openai', 'gemini', 'claude', 'custom'] as const;
-type Provider = (typeof providers)[number];
-
-function isProvider(value: unknown): value is Provider {
-  return typeof value === 'string' && providers.includes(value as Provider);
-}
-
-function responseForError(error: unknown) {
+const columns = 'id,provider,status,connection_type,connected_at,updated_at,last_checked_at,last_error_code,metadata';
+const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+function failure(error: unknown) {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'AUTH_REQUIRED') return NextResponse.json({ error: 'Autenticación requerida' }, { status: 401 });
-  if (code === 'SERVER_CONFIGURATION_ERROR') {
-    return NextResponse.json({ error: 'La bóveda de credenciales no está configurada en el servidor.' }, { status: 503 });
-  }
-  return NextResponse.json({ error: 'No se pudo procesar la conexión del proveedor.' }, { status: 500 });
-}
-
-async function audit(
-  userId: string,
-  provider: Provider,
-  action: 'validated' | 'validation_failed' | 'revoked' | 'saved',
-  resultCode: string | null = null,
-) {
-  const service = getServiceSupabase();
-  await service.from('provider_connection_audit').insert({ user_id: userId, provider, action, result_code: resultCode });
+  const status = code === 'AUTH_REQUIRED' ? 401 : code === 'BODY_TOO_LARGE' ? 413 : code === 'BODY_INVALID' || error instanceof SyntaxError ? 400 : code === 'SERVER_CONFIGURATION_ERROR' ? 503 : 500;
+  return NextResponse.json({ error: status === 401 ? 'Autenticación requerida.' : status === 400 || status === 413 ? 'Solicitud inválida.' : 'No se pudo procesar la conexión.' }, { status });
 }
 
 export async function GET(request: Request) {
   try {
     const { client, user } = await requireUser(request);
-    const { data, error } = await client
-      .from('provider_connections')
-      .select('id, provider, status, connection_type, connected_at, updated_at, last_checked_at, last_error_code')
-      .eq('user_id', user.id)
-      .order('provider');
-
-    if (error) return NextResponse.json({ error: 'No se pudieron cargar las conexiones.' }, { status: 500 });
-    return NextResponse.json({ connections: data || [] });
-  } catch (error) {
-    return responseForError(error);
-  }
+    const { data, error } = await client.from('provider_connections').select(columns).eq('user_id', user.id).eq('connection_type', 'api_key').order('connected_at');
+    if (error) throw new Error('LOOKUP_FAILED');
+    return NextResponse.json({ connections: data || [] }, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch (error) { return failure(error); }
 }
 
 export async function POST(request: Request) {
   try {
     const { user } = await requireUser(request);
-    const body = await request.json();
-    if (!body || typeof body !== 'object') return NextResponse.json({ error: 'Solicitud inválida.' }, { status: 400 });
-    const hasNewKey = typeof body.apiKey === 'string' && body.apiKey.trim().length > 0;
-    const apiKey = hasNewKey ? body.apiKey.trim() : '';
-
-    if (!isProvider(body.provider) || (hasNewKey && (apiKey.length < 8 || apiKey.length > 4096))) {
-      return NextResponse.json({ error: 'Proveedor o clave API inválidos.' }, { status: 400 });
-    }
-
+    const body = await readBoundedJson(request, 8192);
     const service = getServiceSupabase();
-    let keyToValidate = apiKey;
-    let existingConnectionId: string | null = null;
-    if (!hasNewKey) {
-      const { data: connection, error: connectionError } = await service
-        .from('provider_connections').select('id, connection_type')
-        .eq('user_id', user.id).eq('provider', body.provider).maybeSingle();
-      if (connectionError) return NextResponse.json({ error: 'No se pudo cargar la conexión.' }, { status: 500 });
-      if (!connection || connection.connection_type !== 'api_key') {
-        return NextResponse.json({ error: 'No hay una clave API para validar.' }, { status: 404 });
+    if (body.action === 'select' || body.action === 'validate') {
+      if (!uuid.test(body.connectionId || '')) return NextResponse.json({ error: 'Conexión inválida.' }, { status: 400 });
+      const { data: connection, error } = await service.from('provider_connections').select(columns).eq('id', body.connectionId).eq('user_id', user.id).eq('connection_type', 'api_key').maybeSingle();
+      if (error) throw new Error('LOOKUP_FAILED');
+      if (!connection) return NextResponse.json({ error: 'Conexión no encontrada.' }, { status: 404 });
+      if (body.action === 'select') {
+        if (connection.status !== 'connected') return NextResponse.json({ error: 'Validá esta clave antes de usarla.' }, { status: 409 });
+        const { error: selectionError } = await service.rpc('select_provider_api_connection', { owner_id: user.id, selected_id: connection.id });
+        if (selectionError) throw new Error('SELECT_FAILED');
+        return NextResponse.json({ ok: true });
       }
-      existingConnectionId = connection.id;
-      const { data: secret, error: secretError } = await service.from('provider_connection_secrets')
-        .select('ciphertext, iv, auth_tag').eq('connection_id', connection.id).maybeSingle();
-      if (secretError) return NextResponse.json({ error: 'No se pudo cargar la credencial.' }, { status: 500 });
-      if (!secret) return NextResponse.json({ error: 'No hay una clave API para validar.' }, { status: 404 });
-      keyToValidate = decryptProviderSecret(secret);
+      const { data: secret, error: secretError } = await service.from('provider_connection_secrets').select('ciphertext,iv,auth_tag').eq('connection_id', connection.id).maybeSingle();
+      if (secretError || !secret) throw new Error('SECRET_NOT_FOUND');
+      const health = await validateProviderApiKey(connection.provider, decryptProviderSecret(secret));
+      const checkedAt = new Date().toISOString();
+      const { error: updateError } = await service.from('provider_connections').update({ status: health.ok ? 'connected' : health.code === 'invalid_credentials' ? 'expired' : 'error', last_checked_at: checkedAt, last_error_code: health.ok ? null : health.code, updated_at: checkedAt }).eq('id', connection.id).eq('user_id', user.id);
+      if (updateError) throw new Error('UPDATE_FAILED');
+      await service.from('provider_connection_audit').insert({ user_id: user.id, provider: connection.provider, action: health.ok ? 'validated' : 'validation_failed', result_code: health.ok ? null : health.code });
+      return health.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: providerHealthMessage(health.code) }, { status: 422 });
     }
-
-    const health = await validateProviderApiKey(body.provider, keyToValidate);
-    const checkedAt = new Date().toISOString();
-    if (!health.ok) {
-      if (existingConnectionId) {
-        await service.from('provider_connections').update({
-          status: health.code === 'invalid_credentials' ? 'expired' : 'error',
-          last_checked_at: checkedAt,
-          last_error_code: health.code,
-          updated_at: checkedAt,
-        }).eq('id', existingConnectionId).eq('user_id', user.id);
-      }
-      await audit(user.id, body.provider, 'validation_failed', health.code);
-      return NextResponse.json({ error: providerHealthMessage(health.code), code: health.code }, { status: 422 });
+    const key = typeof body.apiKey === 'string' ? body.apiKey.trim() : '';
+    if (body.action !== undefined || key.length < 8 || key.length > 4096 || /\s/.test(key)) return NextResponse.json({ error: 'Ingresá una clave API válida.' }, { status: 400 });
+    const detection = await detectProviderApiKey(key);
+    if (!detection.ok) {
+      const message = detection.code === 'unsupported_key' ? 'No se reconoce el formato. Usá una clave API de Google, Anthropic, OpenAI, OpenRouter o DeepSeek.'
+        : detection.code === 'ambiguous_provider' ? 'No se pudo identificar un único proveedor para esta clave.' : providerHealthMessage(detection.code);
+      return NextResponse.json({ error: message, code: detection.code }, { status: 422 });
     }
-
-    if (hasNewKey) {
-      const encrypted = encryptProviderSecret(apiKey);
-      const { data: connection, error: connectionError } = await service
-        .from('provider_connections')
-        .upsert({
-          user_id: user.id,
-          provider: body.provider,
-          connection_type: 'api_key',
-          status: 'connected',
-          metadata: {},
-          connected_at: new Date().toISOString(),
-          last_checked_at: checkedAt,
-          last_error_code: null,
-          updated_at: checkedAt,
-        }, { onConflict: 'user_id,provider' })
-        .select('id, provider, status, connection_type, connected_at, updated_at, last_checked_at, last_error_code')
-        .single();
-
-      if (connectionError || !connection) {
-        return NextResponse.json({ error: 'No se pudo guardar la conexión.' }, { status: 500 });
-      }
-
-      const { error: secretError } = await service
-        .from('provider_connection_secrets')
-        .upsert({ connection_id: connection.id, ...encrypted, updated_at: new Date().toISOString() }, { onConflict: 'connection_id' });
-
-      if (secretError) {
-        await service.from('provider_connections').update({ status: 'error' }).eq('id', connection.id).eq('user_id', user.id);
-        return NextResponse.json({ error: 'No se pudo guardar la credencial cifrada.' }, { status: 500 });
-      }
-
-      await audit(user.id, body.provider, 'saved');
-      return NextResponse.json({ connection }, { status: 200 });
-    }
-
-    const { data: connection, error: updateError } = await service.from('provider_connections').update({
-      status: 'connected', last_checked_at: checkedAt, last_error_code: null, updated_at: checkedAt,
-    }).eq('id', existingConnectionId).eq('user_id', user.id)
-      .select('id, provider, status, connection_type, connected_at, updated_at, last_checked_at, last_error_code').single();
-    if (updateError || !connection) return NextResponse.json({ error: 'No se pudo actualizar la conexión.' }, { status: 500 });
-    await audit(user.id, body.provider, 'validated');
-    return NextResponse.json({ connection }, { status: 200 });
-  } catch (error) {
-    return responseForError(error);
-  }
+    const encrypted = encryptProviderSecret(key);
+    const { data: id, error } = await service.rpc('save_provider_api_connection', { owner_id: user.id, detected_provider: detection.provider, encrypted_value: encrypted.ciphertext, encrypted_iv: encrypted.iv, encrypted_tag: encrypted.auth_tag });
+    if (error || typeof id !== 'string') throw new Error('SAVE_FAILED');
+    const { data: connection, error: readError } = await service.from('provider_connections').select(columns).eq('id', id).eq('user_id', user.id).single();
+    if (readError) throw new Error('LOOKUP_FAILED');
+    return NextResponse.json({ connection });
+  } catch (error) { return failure(error); }
 }
 
 export async function DELETE(request: Request) {
   try {
     const { user } = await requireUser(request);
-    const provider = new URL(request.url).searchParams.get('provider');
-    if (!isProvider(provider)) return NextResponse.json({ error: 'Proveedor inválido.' }, { status: 400 });
-
+    const id = new URL(request.url).searchParams.get('id');
+    if (!uuid.test(id || '')) return NextResponse.json({ error: 'Conexión inválida.' }, { status: 400 });
     const service = getServiceSupabase();
-    const { data: connection } = await service.from('provider_connections').select('id')
-      .eq('user_id', user.id).eq('provider', provider).maybeSingle();
-    const { error } = await service
-      .from('provider_connections')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('provider', provider);
-
-    if (error) return NextResponse.json({ error: 'No se pudo revocar la conexión.' }, { status: 500 });
-    if (connection) await audit(user.id, provider, 'revoked');
+    const { data: removed, error } = await service.from('provider_connections').delete().eq('user_id', user.id).eq('id', id).select('provider');
+    if (error) throw new Error('DELETE_FAILED');
+    if (removed?.[0]) await service.from('provider_connection_audit').insert({ user_id: user.id, provider: removed[0].provider, action: 'revoked' });
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    return responseForError(error);
-  }
+  } catch (error) { return failure(error); }
 }
