@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 
 export async function analyzeWithDeepSeek(prompt: string, apiKey: string, model: string) {
   if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');
-  const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com', timeout: 25_000, maxRetries: 1 });
+  const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com', fetch: globalThis.fetch, timeout: 25_000, maxRetries: 1 });
   const response = await client.chat.completions.create({
     model, max_tokens: 1200, messages: [{ role: 'user', content: prompt }],
   });

@@ -15,13 +15,13 @@ globalThis.fetch = async (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
   const issuer = issuers.get(url.hostname);
   if (!issuer) return realFetch(input, options);
-  const headers = new Headers(options?.headers);
+  const headers = new Headers(options?.headers ?? (input instanceof Request ? input.headers : undefined));
   const key = headers.get('authorization')?.replace(/^Bearer /,'') || headers.get('x-api-key') || headers.get('x-goog-api-key') || '';
   // No real key leaves this disposable test process.
   if (!key.toLowerCase().includes('synthetic-')) throw new Error('Fixture refuses non-synthetic provider key');
   if (!key.startsWith(issuer[0]) || key.endsWith('-invalid')) return Response.json({ error: 'Rejected synthetic key' }, { status: 401 });
-  if (options?.method === 'POST') {
-    const body = JSON.parse(options.body);
+  if ((options?.method ?? (input instanceof Request ? input.method : 'GET')) === 'POST') {
+    const body = JSON.parse(options?.body ?? await input.clone().text());
     assert.equal(body.model, 'synthetic-deepseek');
     return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: 'Synthetic DeepSeek API OK' } }] });
   }
