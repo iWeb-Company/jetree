@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/server/auth';
 import { extractTelegramTextUpdate, verifyTelegramSecret } from '@/lib/telegram-webhook';
+import { runTelegramQueue } from '@/lib/server/telegram-queue';
 
 export const runtime = 'nodejs';
+export const maxDuration = 240;
 
 export async function POST(request: Request, { params: promisedParams }: { params: Promise<{ agentId: string }> }) {
   const params = await promisedParams;
@@ -27,7 +29,9 @@ export async function POST(request: Request, { params: promisedParams }: { param
   const { error: insertError } = await service.from('telegram_updates').upsert({
     bot_id: bot.id, agent_id: params.agentId, update_id: parsed.updateId, chat_id: parsed.chatId,
     sender_name: parsed.senderName, message_text: parsed.text, status: 'pending',
+    ...(parsed.audio ? { audio_file: parsed.audio } : {}),
   }, { onConflict: 'bot_id,update_id', ignoreDuplicates: true });
   if (insertError) return NextResponse.json({ error: 'Could not enqueue update.' }, { status: 503 });
+  after(async () => { await runTelegramQueue(bot.id).catch(() => {}); });
   return NextResponse.json({ ok: true });
 }
