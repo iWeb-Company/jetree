@@ -1,5 +1,6 @@
 // Test-only preload; refuses hosted databases and non-CI use. Never imported by app.
 import assert from 'node:assert/strict';
+import { appendFile, mkdir } from 'node:fs/promises';
 assert.equal(process.env.JETREE_DISPOSABLE_CI, 'true');
 assert.equal(process.env.CI, 'true');
 assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, '127.0.0.1');
@@ -13,6 +14,17 @@ const issuers = new Map([
 ]);
 globalThis.fetch = async (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (url.hostname === 'api.telegram.org') {
+    assert.ok(url.pathname.includes('botsynthetic-audio-token/'), 'Fixture refuses real Telegram tokens');
+    const operation = url.pathname.split('/').at(-1);
+    const requestBody = options?.body ? JSON.parse(options.body) : {};
+    await mkdir('artifacts', { recursive: true });
+    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id }) + '\n');
+    if (operation === 'getFile') return Response.json({ ok: true, result: { file_path: 'voice/synthetic.oga', file_size: 4 } });
+    if (operation === 'synthetic.oga') return new Response('ogg!');
+    assert.ok(['sendMessage', 'sendChatAction'].includes(operation));
+    return Response.json({ ok: true, result: true });
+  }
   const issuer = issuers.get(url.hostname);
   if (!issuer) return realFetch(input, options);
   const headers = new Headers(options?.headers ?? (input instanceof Request ? input.headers : undefined));
@@ -22,8 +34,13 @@ globalThis.fetch = async (input, options) => {
   if (!key.startsWith(issuer[0]) || key.endsWith('-invalid')) return Response.json({ error: 'Rejected synthetic key' }, { status: 401 });
   if ((options?.method ?? (input instanceof Request ? input.method : 'GET')) === 'POST') {
     const body = JSON.parse(options?.body ?? await input.clone().text());
+    if (issuer[1] === 'gemini') {
+      assert.equal(body.contents[0].parts[1].inlineData.mimeType, 'audio/ogg');
+      return Response.json({ candidates: [{ content: { parts: [{ text: 'Respondé: audio comprendido' }] } }] });
+    }
     assert.equal(body.model, 'synthetic-deepseek');
-    return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: 'Synthetic DeepSeek API OK' } }] });
+    const audioPrompt = JSON.stringify(body.messages).includes('[Transcripción de audio]');
+    return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: audioPrompt ? 'Synthetic audio understood' : 'Synthetic DeepSeek API OK' } }] });
   }
   return issuer[1] === 'gemini'
     ? Response.json({ models: [{ name: 'models/synthetic-gemini', supportedGenerationMethods: ['generateContent'] }] })
