@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { UserSubscription } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { API_PROVIDERS, PROVIDER_LABELS, connectionLabel, type ApiConnection } from '@/lib/api-providers';
