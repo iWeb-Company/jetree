@@ -5,6 +5,7 @@ assert.equal(process.env.JETREE_DISPOSABLE_CI, 'true');
 assert.equal(process.env.CI, 'true');
 assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, '127.0.0.1');
 const realFetch = globalThis.fetch;
+const failedDeliveries = new Set();
 const issuers = new Map([
   ['api.openai.com', ['sk-proj-synthetic-', 'openai']],
   ['api.deepseek.com', ['sk-synthetic-deepseek-', 'deepseek']],
@@ -23,6 +24,10 @@ globalThis.fetch = async (input, options) => {
     if (operation === 'getFile') return Response.json({ ok: true, result: { file_path: 'voice/synthetic.oga', file_size: 4 } });
     if (operation === 'synthetic.oga') return new Response('ogg!');
     assert.ok(['sendMessage', 'sendChatAction'].includes(operation));
+    if (operation === 'sendMessage' && requestBody.chat_id === 54321 && !failedDeliveries.has(requestBody.chat_id)) {
+      failedDeliveries.add(requestBody.chat_id);
+      return Response.json({ ok: false }, { status: 503 });
+    }
     return Response.json({ ok: true, result: true });
   }
   const issuer = issuers.get(url.hostname);

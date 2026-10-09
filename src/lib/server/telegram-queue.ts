@@ -148,8 +148,8 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
         .select('id').eq('telegram_update_id', update.id).maybeSingle();
       if (duplicateError || !existingMessage) throw new Error('MESSAGE_SAVE_FAILED');
     }
-    const { data: historyRows } = await service.from('messages').select('role,content,telegram_update_id').eq('conversation_id', conversationId).order('created_at', { ascending: true }).limit(40);
-    const history = (historyRows || []).filter((row: any) => row.telegram_update_id !== update.id).slice(-20)
+    const { data: historyRows } = await service.from('messages').select('role,content,telegram_update_id').eq('conversation_id', conversationId).order('created_at', { ascending: false }).limit(21);
+    const history = (historyRows || []).filter((row: any) => row.telegram_update_id !== update.id).slice(0, 20).reverse()
       .map((row: any) => ({ role: row.role as 'user'|'assistant', content: row.content }));
     const apiKeys: Record<string, string> = {};
     for (const provider of new Set(roster.map(item => item.provider))) {
@@ -173,7 +173,10 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     });
     if (executionError) throw new Error('EXECUTION_LEDGER_SAVE_FAILED');
     await service.from('messages').insert({ conversation_id: conversationId, author_user_id: null, role: 'assistant', content: responseText.slice(0, 12000), execution_id: executionId });
-    await service.from('telegram_updates').update({ status: 'delivery_pending', response_text: responseText, attempts: attempt, last_error: null, updated_at: new Date().toISOString() }).eq('id', update.id);
+    const { error: deliverySaveError } = await service.from('telegram_updates').update({ status: 'delivery_pending', response_text: responseText, attempts: attempt, last_error: null, updated_at: new Date().toISOString() }).eq('id', update.id);
+    if (deliverySaveError) throw new Error('DELIVERY_SAVE_FAILED');
+    // A delivery retry reuses the saved reply instead of paying to transcribe/infer again.
+    update.status = 'delivery_pending';
     await service.from('tasks').update({ result: responseText.slice(0, 12000), retry_count: attempt - 1, last_error: null, updated_at: new Date().toISOString() }).eq('id', task.id);
     await sendTelegram(token, Number(update.chat_id), responseText);
     await service.from('telegram_updates').update({ status: 'completed', locked_at: null, updated_at: new Date().toISOString() }).eq('id', update.id);

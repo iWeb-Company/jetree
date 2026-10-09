@@ -42,7 +42,23 @@ try {
   assert.equal(events.filter(e=>e.operation==='getFile').length, 1); assert.equal(events.filter(e=>e.operation==='sendMessage').length, 1); assert.ok(events.some(e=>e.operation==='sendChatAction'));
   const oversized = { ...update, update_id: 9002, message: { ...update.message, voice: { file_id: 'synthetic_too_large', duration: 301 } } };
   assert.equal((await post(oversized)).status, 200); const rejected = await waitStatus(9002,'failed'); assert.equal(rejected.last_error,'AUDIO_TOO_LARGE');
-  console.log('PASS immediate webhook processing without scheduler, voice transcription, typing, duplicate delivery prevention and oversized rejection');
+  const retry = { ...update, update_id: 9003, message: { ...update.message, chat: { id: 54321 } } };
+  assert.equal((await post(retry)).status, 200);
+  const pending = await waitStatus(9003,'delivery_pending');
+  // Wait for failed delivery to release its lock before explicitly waking the scheduler.
+  for (let n = 0; n < 50; n++) {
+    const row = db(await service.from('telegram_updates').select('locked_at,last_error').eq('id',pending.id).single());
+    if (!row.locked_at && row.last_error === 'TELEGRAM_DELIVERY_FAILED') break;
+    await new Promise(resolve => setTimeout(resolve,100));
+  }
+  db(await service.from('telegram_updates').update({ next_attempt_at: new Date().toISOString() }).eq('id',pending.id));
+  assert.equal((await fetch(origin+'/api/telegram/worker', { method:'POST', headers:{ 'x-jetree-worker-secret':process.env.JETREE_TELEGRAM_WORKER_SECRET } })).status,200);
+  await waitStatus(9003,'completed');
+  const afterRetry = (await readFile('artifacts/telegram-fixture-events.jsonl','utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(afterRetry.filter(e=>e.operation==='getFile').length,2,'Delivery retry must not redownload or retranscribe audio');
+  assert.equal(db(await service.from('messages').select('id').eq('telegram_update_id',pending.id)).length,1);
+  assert.equal(db(await service.from('agent_executions').select('id').eq('conversation_id',db(await service.from('telegram_chat_sessions').select('conversation_id').eq('bot_id',bot.id).eq('chat_id',54321).single()).conversation_id)).length,1,'Delivery retry must not rerun inference');
+  console.log('PASS immediate webhook processing, voice transcription, typing, deduplication, oversized rejection and cached delivery retry');
 } finally {
   if (department) db(await service.from('departments').delete().eq('id',department.id));
   if (user) db(await service.auth.admin.deleteUser(user.id));
