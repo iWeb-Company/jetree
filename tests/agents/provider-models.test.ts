@@ -15,3 +15,12 @@ test('model catalog comes from the user credential and filters non-generative Ge
 test('catalog errors expose no provider response body or credentials', async () => {
   await assert.rejects(listProviderModels('openai', 'secret', async () => new Response('secret diagnostic', { status: 401 })), /^Error: PROVIDER_MODELS_UNAVAILABLE$/);
 });
+
+test('DeepSeek catalog uses its official API with the selected key', async () => {
+  const models = await listProviderModels('deepseek', 'synthetic', async (url, options) => {
+    assert.equal(String(url), 'https://api.deepseek.com/models');
+    assert.equal(new Headers(options?.headers).get('authorization'), 'Bearer synthetic');
+    return Response.json({ data: [{ id: 'deepseek-chat' }] });
+  });
+  assert.deepEqual(models, [{ value: 'deepseek-chat', label: 'deepseek-chat' }]);
+});

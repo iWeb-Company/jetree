@@ -1,5 +1,5 @@
 import { Agent } from '@/types';
-import { analyzeWithChatGPT, analyzeWithOpenRouter } from '@/lib/openai';
+import { analyzeWithChatGPT, analyzeWithOpenRouter, analyzeWithDeepSeek } from '@/lib/openai';
 import { analyzeWithGemini } from '@/lib/gemini';
 import { analyzeWithClaude } from '@/lib/claude';
 
@@ -35,6 +35,7 @@ export async function callAIProvider(agent: Agent, prompt: string, apiKeys: Reco
     if (agent.provider === 'openai') return (await analyzeWithChatGPT(prompt, apiKeys.openai, agent.model)) || '';
     if (agent.provider === 'gemini') return (await analyzeWithGemini(prompt, apiKeys.gemini, agent.model)) || '';
     if (agent.provider === 'custom') return (await analyzeWithOpenRouter(prompt, apiKeys.custom, agent.model)) || '';
+    if (agent.provider === 'deepseek') return (await analyzeWithDeepSeek(prompt, apiKeys.deepseek, agent.model)) || '';
     throw new AgentEngineError('UNSUPPORTED_PROVIDER');
   } catch (error) {
     if (error instanceof AgentEngineError) throw error;
