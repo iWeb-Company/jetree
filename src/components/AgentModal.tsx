@@ -55,7 +55,7 @@ export default function AgentModal({
   const [modelNotice, setModelNotice] = useState('');
 
   useEffect(() => {
-    if (!isOpen || provider === 'custom') return;
+    if (!isOpen) return;
     let active = true;
     setModelNotice('Consultando modelos de tu conexión…');
     (async () => {
@@ -64,10 +64,14 @@ export default function AgentModal({
       const response = await fetch(`/api/provider-models?provider=${provider}`, { headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: 'no-store' });
       if (!response.ok) throw new Error();
       const payload = await response.json();
-      if (active) { setProviderModels(current => ({ ...current, [provider]: payload.models })); setModelNotice('Catálogo de tu conexión. La disponibilidad se verifica al ejecutar.'); }
+      if (active) {
+        setProviderModels(current => ({ ...current, [provider]: payload.models }));
+        if (!agentToEdit) setModel(current => payload.models.some((item: { value: string }) => item.value === current) ? current : payload.models[0]?.value || current);
+        setModelNotice('Catálogo de tu conexión. La disponibilidad se verifica al ejecutar.');
+      }
     })().catch(() => { if (active) setModelNotice('No se pudo consultar el catálogo. Se muestran las opciones guardadas.'); });
     return () => { active = false; };
-  }, [provider, isOpen]);
+  }, [provider, isOpen, userSubscriptions, agentToEdit]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -128,6 +132,8 @@ export default function AgentModal({
           { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Excelente en Código y Matices)' },
           { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Velocidad & Eficiencia)' },
         ];
+      case 'deepseek':
+        return [{ value: 'deepseek-chat', label: 'DeepSeek Chat' }, { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' }];
       case 'custom':
         return [{ value: 'custom-model', label: 'Escribí el ID del modelo de OpenRouter abajo' }];
     }
@@ -378,66 +384,11 @@ export default function AgentModal({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleProviderChange('gemini')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-medium border transition-all text-left flex flex-col justify-between ${
-                      provider === 'gemini'
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/60 shadow-sm'
-                        : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
-                    }`}
-                  >
-                    <span className="font-semibold text-white flex items-center gap-1">✨ Gemini</span>
-                    <span className={`text-[9px] mt-1 font-mono ${isSubscribed('gemini') ? 'text-cyan-400' : 'text-gray-500'}`}>
-                      {isSubscribed('gemini') ? '● API configurada' : 'Configurar API'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleProviderChange('openai')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-medium border transition-all text-left flex flex-col justify-between ${
-                      provider === 'openai'
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-sm'
-                        : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
-                    }`}
-                  >
-                    <span className="font-semibold text-white flex items-center gap-1">🟢 OpenAI</span>
-                    <span className={`text-[9px] mt-1 font-mono ${isSubscribed('openai') ? 'text-emerald-400' : 'text-gray-500'}`}>
-                      {isSubscribed('openai') ? '● API configurada' : 'Configurar API'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleProviderChange('claude')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-medium border transition-all text-left flex flex-col justify-between ${
-                      provider === 'claude'
-                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/60 shadow-sm'
-                        : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
-                    }`}
-                  >
-                    <span className="font-semibold text-white flex items-center gap-1">🟣 Claude</span>
-                    <span className={`text-[9px] mt-1 font-mono ${isSubscribed('claude') ? 'text-purple-400' : 'text-gray-500'}`}>
-                      {isSubscribed('claude') ? '● API configurada' : 'Configurar API'}
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleProviderChange('custom')}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-medium border transition-all text-left flex flex-col justify-between ${
-                      provider === 'custom'
-                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/60 shadow-sm'
-                        : 'bg-[#05070b] text-gray-400 border-cyan-950 hover:border-cyan-900'
-                    }`}
-                  >
-                    <span className="font-semibold text-white flex items-center gap-1">🔑 OpenRouter</span>
-                    <span className={`text-[9px] mt-1 font-mono ${isSubscribed('custom') ? 'text-amber-400' : 'text-gray-500'}`}>
-                      {isSubscribed('custom') ? '● OpenRouter configurado' : 'Configurar OpenRouter'}
-                    </span>
-                  </button>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {(['gemini', 'openai', 'claude', 'custom', 'deepseek'] as AIProvider[]).map(option => <button key={option} type="button" onClick={() => handleProviderChange(option)} className={`rounded-xl border p-3 text-left text-xs ${provider === option ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300' : 'border-cyan-950 bg-[#05070b] text-gray-400'}`}>
+                    <span className="block font-semibold">{({ gemini: 'Google Gemini', openai: 'OpenAI', claude: 'Claude', custom: 'OpenRouter', deepseek: 'DeepSeek' })[option]}</span>
+                    <span className="mt-1 block text-[10px]">{isSubscribed(option) ? 'API configurada' : 'Configurar API'}</span>
+                  </button>)}
                 </div>
               </div>
 
@@ -446,7 +397,7 @@ export default function AgentModal({
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                   Modelo Específico
                 </label>
-                {provider === 'custom' ? (
+                {provider === 'custom' && !providerModels.custom?.length ? (
                   <input
                     required
                     value={model === 'custom-model' ? '' : model}
@@ -468,7 +419,7 @@ export default function AgentModal({
               </div>
 
               {/* Descripción */}
-              {provider !== 'custom' && <p role="status" className="text-xs text-gray-400">{modelNotice}</p>}
+              <p role="status" className="text-xs text-gray-400">{modelNotice}</p>
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                   Descripción del Rol

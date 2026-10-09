@@ -7,7 +7,7 @@ assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname,'lgimqhuohkj
 const options={auth:{persistSession:false,autoRefreshToken:false}};
 const service=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,options);
 const client=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,options);
-const run=randomUUID();let user,dep,token,connected=false;const extraUsers=[];
+const run=randomUUID();let user,dep,token,connected=false,connectionId;const extraUsers=[];
 function db(r,label){assert.equal(r.error,null,label);return r.data;}
 async function api(path,method='GET',body){const r=await fetch(origin+path,{method,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(180000)});return {status:r.status,body:await r.json()};}
 try {
@@ -18,7 +18,7 @@ try {
  // Set an independent random password only used inside this process.
  const password=randomBytes(32).toString('base64url')+'!Aa1';db(await service.auth.admin.updateUserById(user.id,{password}),'fixture password');token=db(await client.auth.signInWithPassword({email:user.email,password}),'login').session.access_token;
  dep=db(await service.from('departments').insert({name:'E2E Gemini '+run,created_by:user.id}).select('id').single(),'fixture department').id;
- const connection=await api('/api/provider-connections','POST',{provider:'gemini',apiKey:process.env.JETREE_E2E_PROVIDER_KEY});assert.equal(connection.status,200,'Provider connection '+connection.status);connected=true;console.log('PASS encrypted provider connection and health validation');
+ const connection=await api('/api/provider-connections','POST',{provider:'gemini',apiKey:process.env.JETREE_E2E_PROVIDER_KEY});assert.equal(connection.status,200,'Provider connection '+connection.status);connected=true;connectionId=connection.body.connection.id;console.log('PASS encrypted provider connection and health validation');
  const created=await api('/api/agents','POST',{department_id:dep,name:'Synthetic Gemini agent',provider:'gemini',model,system_prompt:'Only synthetic test data. Keep answers under 30 words.'});assert.equal(created.status,201);const agent=created.body.agent;
  const result=await api('/api/agents/chat','POST',{agentId:agent.id,message:'Synthetic test: calculate 17 plus 25. Respond with the number.'});console.log('Chat status: '+result.status+'; code: '+(result.body.code||'none'));assert.equal(result.status,200,'Real inference failed');assert.match(result.body.reply,/42/);
  const ledger=db(await service.from('agent_executions').select('status,output_chars').eq('user_id',user.id),'execution metadata');assert.equal(ledger.length,1);assert.equal(ledger[0].status,'completed');assert(ledger[0].output_chars>0);console.log('PASS real Gemini inference, response and completed execution ledger ('+model+')');
@@ -67,9 +67,9 @@ try {
  db(await service.from('telegram_bots').update({owner_user_id:foreign.id}).eq('id',bot.id),'set unassigned synthetic owner');await expectGuard(updateId+5,'BOT_OWNER_ACCESS_REVOKED');
  db(await service.from('department_members').insert({department_id:dep,user_id:foreign.id}),'grant synthetic membership');db(await service.from('department_members').delete().eq('department_id',dep).eq('user_id',foreign.id),'revoke synthetic membership');await expectGuard(updateId+6,'BOT_OWNER_ACCESS_REVOKED');
  db(await service.from('telegram_bots').update({owner_user_id:user.id}).eq('id',bot.id),'restore synthetic owner');console.log('PASS worker blocks archived agents/departments, foreign owners and revoked members before delivery');
- const revoke=await api('/api/provider-connections?provider=gemini','DELETE',{provider:'gemini'});assert.equal(revoke.status,200);connected=false;const denied=await api('/api/agents/chat','POST',{agentId:agent.id,message:'Synthetic post-revocation denial'});assert.equal(denied.status,409);console.log('PASS provider revocation blocks new inference');
+ const revoke=await api('/api/provider-connections?id='+connectionId,'DELETE',{provider:'gemini'});assert.equal(revoke.status,200);connected=false;const denied=await api('/api/agents/chat','POST',{agentId:agent.id,message:'Synthetic post-revocation denial'});assert.equal(denied.status,409);console.log('PASS provider revocation blocks new inference');
 } catch(e){console.error(e instanceof assert.AssertionError?e.message:'Live test failed; sensitive details suppressed');process.exitCode=1;} finally {
- if(connected)await api('/api/provider-connections','DELETE',{provider:'gemini'}).catch(()=>{});
+ if(connected)await api('/api/provider-connections?id='+connectionId,'DELETE',{provider:'gemini'}).catch(()=>{});
  await client.auth.signOut();
  if(user){for(const table of ['tasks','activity_logs'])db(await service.from(table).delete().eq(table==='tasks'?'created_by':'user_id',user.id),'cleanup '+table);}
  if(dep)db(await service.from('departments').delete().eq('id',dep),'cleanup department');
