@@ -60,6 +60,10 @@ try {
   assert.equal(db(await service.from('agent_executions').select('id').eq('conversation_id',db(await service.from('telegram_chat_sessions').select('conversation_id').eq('bot_id',bot.id).eq('chat_id',54321).single()).conversation_id)).length,1,'Delivery retry must not rerun inference');
   console.log('PASS immediate webhook processing, voice transcription, typing, deduplication, oversized rejection and cached delivery retry');
 } finally {
-  if (department) db(await service.from('departments').delete().eq('id',department.id));
+  if (department) {
+    // Remove task assignments before deleting their agents (the DB validates every assignment).
+    db(await service.from('tasks').delete().eq('department_id',department.id));
+    db(await service.from('departments').delete().eq('id',department.id));
+  }
   if (user) db(await service.auth.admin.deleteUser(user.id));
 }
