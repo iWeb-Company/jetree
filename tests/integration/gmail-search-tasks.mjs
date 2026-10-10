@@ -68,5 +68,5 @@ try {
   console.log('PASS Gmail OAuth, encrypted refresh, manager/agent tools, approvals, isolation and grouped completed tasks');
 } finally {
   await browser?.close();
-  for (const user of users) { db(await service.from('departments').delete().eq('created_by', user.id)); db(await service.from('activity_logs').delete().eq('user_id', user.id)); db(await service.auth.admin.deleteUser(user.id)); }
+  for (const user of users) { db(await service.from('tasks').delete().eq('created_by', user.id)); db(await service.from('departments').delete().eq('created_by', user.id)); db(await service.from('activity_logs').delete().eq('user_id', user.id)); db(await service.auth.admin.deleteUser(user.id)); }
 }
