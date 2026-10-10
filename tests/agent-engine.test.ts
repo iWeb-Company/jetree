@@ -29,6 +29,43 @@ const specialist = makeAgent({
   description: 'Writes code',
 });
 
+test('a delegated follow-up retains the original mail reference and waits for approval', async () => {
+  const mailAgent = { ...specialist, enabledPluginIds: ['plugin-gmail-core'] };
+  let step = 0;
+  const result = await executeAgentChat(makeAgent(), 'Contestale gracias', [mailAgent], [
+    { role: 'user', content: 'Leé el correo de test@example.com' },
+    { role: 'assistant', content: 'Mensaje mail123: confirmación de reunión de test@example.com' },
+  ], {}, async (actingAgent, prompt) => {
+    step++;
+    if (actingAgent.roleType === 'manager') {
+      assert.match(prompt, /specialist-1.*plugin-gmail-core/);
+      return JSON.stringify({ decision: 'delegate', managerNotes: 'Correo', delegateTo: 'specialist-1', subTask: 'Contestale gracias' });
+    }
+    // Even when the planner omits the reference, the specialist receives the history.
+    assert.match(prompt, /Mensaje mail123/);
+    if (step === 2) return JSON.stringify({ toolId: 'plugin-gmail-core', operation: 'get_message', input: { messageId: 'mail123' } });
+    assert.match(prompt, /sender@example.com/);
+    return JSON.stringify({ toolId: 'plugin-gmail-core', operation: 'reply_message', input: { messageId: 'mail123', to: 'sender@example.com', body: 'Gracias' } });
+  }, undefined, async (actingAgent, _tool, operation, input) => {
+    assert.equal(actingAgent.id, mailAgent.id);
+    if (operation === 'get_message') return { result: { id: 'mail123', from: 'sender@example.com', text: 'Reunión confirmada' } };
+    assert.equal(operation, 'reply_message');
+    assert.equal(input.to, 'sender@example.com');
+    return { pendingApproval: true, approvalId: 'approval123' };
+  });
+  assert.equal(step, 3);
+  assert.match(result.reply, /pendiente de tu aprobación/);
+});
+
+test('an agent with no enabled connectors receives the setup instruction without running tools', async () => {
+  const result = await executeAgentChat(makeAgent({ roleType: 'independent', enabledPluginIds: [] }), 'Mostrame mis correos', [], [], {}, async (_agent, prompt) => {
+    assert.match(prompt, /Conectores permitidos para este agente: ninguno/);
+    assert.match(prompt, /Nunca lo actives/);
+    return 'Habilitá Gmail en la configuración del agente.';
+  }, undefined, async () => { assert.fail('Unauthorized executor reached'); });
+  assert.match(result.reply, /Habilitá Gmail/);
+});
+
 test('managers and independent agents can run their enabled Gmail and web tools', async () => {
   for (const roleType of ['manager', 'independent'] as const) {
     const agent = makeAgent({ roleType, enabledPluginIds: ['plugin-gmail-core', 'plugin-web-search'] });
