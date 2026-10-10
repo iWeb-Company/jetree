@@ -96,6 +96,14 @@ contenedor; no compartas esos logs ni el código por chat.
 
 El merge/deploy recrea Jetree y carga su URL/red. La huella de esquema se
 actualiza después de que Codex aplique y verifique la migración en Supabase dev.
+La migración ya está aplicada y verificada. Antes del merge a dev:
+
+```bash
+sudo cp -p /opt/jetree/environments/dev/schema.sha256 /opt/jetree/environments/dev/schema.sha256.before-freellmapi
+printf '%s\n' 'ac92cd7c7f3f5b5f99214f3f19aa3b1af937914a313b30c4ec3d86a3093ec950' | sudo tee /opt/jetree/environments/dev/schema.sha256
+sudo grep -q '^FREELLMAPI_BASE_URL=http://freellmapi-dev:3001/v1$' /opt/jetree/environments/dev/runtime.env && echo 'URL FreeLLMAPI presente'
+```
+
 No ejecutar bootstrap SQL ni migraciones manualmente en Supabase.
 
 Estos comandos de instalación son para una instancia nueva. No regenerar
