@@ -10,6 +10,7 @@ export default function ConnectionGuide() {
     <p>Si una clave falla, Jetree muestra el error. Elegí y validá otra explícitamente. El acceso a modelos mediante suscripciones, OAuth y equipos locales está pausado.</p>
     <h2 className="text-xl font-semibold">Herramientas de managers y agentes</h2>
     <p>En Conectores de herramientas podés conectar GitHub, Google Drive y Gmail. Después habilitá las herramientas en cada manager o agente. Gmail permite buscar, leer, enviar y responder correos, marcar como leído y mover a papelera o restaurar. Revisá las acciones pendientes en el panel de aprobaciones antes de enviarlas o ejecutarlas.</p>
+    <p>Podés pedir las operaciones en lenguaje natural: «mostrame los correos», «contestale» o «buscá videos». Para usar herramientas por Telegram, el propietario vincula su chat privado desde la configuración del bot y envía el comando generado. Los envíos y cambios muestran el detalle con botones Aprobar y ejecutar o Rechazar en ese mismo chat. Podés revocar el acceso desde Jetree.</p>
     <p>Habilitá Internet y YouTube para buscar información actual y videos con enlaces a las fuentes. La búsqueda debe estar configurada por el administrador. Encontrar un video no significa que el agente pueda verlo o transcribirlo.</p>
   </article></main>;
 }
