@@ -41,6 +41,7 @@ globalThis.fetch = async (input, options) => {
     const body = JSON.parse(options?.body ?? await input.clone().text());
     if (url.pathname === '/api/v1/audio/transcriptions') return Response.json({error:'Synthetic insufficient credits'},{status:402});
     if (issuer[1] === 'gemini') {
+      assert.equal(url.pathname,'/v1beta/models/gemini-3.5-flash-lite:generateContent','Fixture refuses hardcoded unavailable legacy models');
       assert.equal(body.contents[0].parts[1].inlineData.mimeType, 'audio/ogg');
       return Response.json({ candidates: [{ content: { parts: [{ text: 'Respondé: audio comprendido' }] } }] });
     }
@@ -49,6 +50,6 @@ globalThis.fetch = async (input, options) => {
     return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: audioPrompt ? 'Synthetic audio understood' : 'Synthetic DeepSeek API OK' } }] });
   }
   return issuer[1] === 'gemini'
-    ? Response.json({ models: [{ name: 'models/synthetic-gemini', supportedGenerationMethods: ['generateContent'] }] })
+    ? Response.json({ models: [{ name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] }] })
     : Response.json({ data: [{ id: 'synthetic-' + issuer[1] }] });
 };

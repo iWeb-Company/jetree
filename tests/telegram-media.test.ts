@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { downloadTelegramAudio, audioFormat, MAX_AUDIO_BYTES, transcriptionProvider, transcribeTelegramAudio, startTelegramTyping } from '../src/lib/server/telegram-media';
+import { downloadTelegramAudio, audioFormat, MAX_AUDIO_BYTES, transcriptionProvider, transcribeTelegramAudio, startTelegramTyping, googleTranscriptionModel } from '../src/lib/server/telegram-media';
 import { extractTelegramTextUpdate } from '../src/lib/telegram-webhook';
 
 const audio = { fileId: 'synthetic_file', mimeType: 'audio/ogg', duration: 3, size: 4 };
@@ -37,12 +37,24 @@ test('Telegram downloads only approved file paths and enforces actual bytes with
 test('Google, OpenAI and OpenRouter transcription transport never places keys in URLs', async () => {
   for (const provider of ['gemini', 'openai', 'custom'] as const) {
     const text = await transcribeTelegramAudio(Buffer.from('ogg!'), audio, provider, 'synthetic-key', async (url, options) => {
+      if (provider === 'gemini' && !options?.method) return Response.json({models:[{name:'models/gemini-9.7-flash-lite',supportedGenerationMethods:['generateContent']}]});
       assert.equal(String(url).includes('synthetic-key'), false); assert.equal(options?.method, 'POST');
+      if (provider === 'gemini') {
+        assert.ok(String(url).endsWith('/gemini-9.7-flash-lite:generateContent'));
+        assert.equal(JSON.parse(String(options?.body)).generationConfig.thinkingConfig,undefined);
+      }
       if (provider === 'openai') assert.ok(options?.body instanceof FormData);
       return provider === 'gemini' ? Response.json({ candidates: [{ content: { parts: [{ text: 'hola' }] } }] }) : Response.json({ text: 'hola' });
     });
     assert.equal(text, 'hola');
   }
+});
+
+test('Google transcription discovers a stable Flash model instead of assuming legacy access', () => {
+  const rows = ['gemini-2.5-flash','gemini-3.8-flash','gemini-3.5-flash-lite','gemini-3.8-flash-tts','gemini-3.1-flash-image','gemini-3.9-flash-preview'].map(value=>({value,label:value}));
+  assert.equal(googleTranscriptionModel(rows),'gemini-3.5-flash-lite');
+  assert.equal(googleTranscriptionModel([{value:'gemini-3.8-flash',label:'Flash'}]),'gemini-3.8-flash');
+  assert.throws(()=>googleTranscriptionModel([{value:'gemini-3.8-flash-tts',label:'TTS'}]),/MODEL_UNAVAILABLE/);
 });
 test('typing renews while processing and stops, including when Telegram is unavailable', async () => {
   let calls = 0;
