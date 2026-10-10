@@ -29,6 +29,26 @@ const specialist = makeAgent({
   description: 'Writes code',
 });
 
+test('a copied pending draft cannot be announced before the runner creates a real approval', async () => {
+  const agent = { ...specialist, enabledPluginIds: ['plugin-gmail-core'] };
+  let decisions = 0;
+  let writes = 0;
+  const result = await executeAgentChat(agent, 'Mandá un correo de prueba', [], [], {}, async (_agent, prompt) => {
+    if (++decisions === 1) return JSON.stringify({ answer: 'Preparé la acción y quedó pendiente de tu aprobación.\nAcción pendiente: send_message' });
+    assert.match(prompt, /todavía no se creó una aprobación/);
+    return JSON.stringify({ toolId: 'plugin-gmail-core', operation: 'send_message', input: { to: 'test@example.invalid', subject: 'Test', body: 'Test' } });
+  }, undefined, async () => { writes++; return { pendingApproval: true, approvalId: 'real-approval' }; });
+  assert.equal(decisions, 2);
+  assert.equal(writes, 1);
+  assert.match(result.reply, /pendiente de tu aprobación/);
+});
+
+test('missing approval explanations are not mistaken for fabricated drafts', async () => {
+  const agent = { ...specialist, enabledPluginIds: ['plugin-gmail-core'] };
+  const result = await executeAgentChat(agent, 'Qué falta?', [], [], {}, async () => JSON.stringify({ answer: 'No hay una acción pendiente. Indicá el destinatario.' }), undefined, async () => { assert.fail('No tool needed'); });
+  assert.match(result.reply, /Indicá el destinatario/);
+});
+
 test('a delegated follow-up retains the original mail reference and waits for approval', async () => {
   const mailAgent = { ...specialist, enabledPluginIds: ['plugin-gmail-core'] };
   let step = 0;

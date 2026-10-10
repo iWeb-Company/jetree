@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 
+export function isTelegramApprovalReply(text: string): boolean {
+  return /^(?:aprobado|aprobar|apruebo|lo apruebo|confirmo|confirmado|rechazado|rechazar|rechazo|cancelar|cancelado)[.!\s]*$/i.test(text.trim());
+}
+
 export function telegramToolIdentityMatches(bot: { tool_chat_id?: number | string | null; tool_user_id?: number | string | null }, update: { chat_id: number | string; sender_user_id?: number | string | null; chat_type?: string | null }): boolean {
   return update.chat_type === 'private' && Boolean(bot.tool_chat_id && bot.tool_user_id && update.sender_user_id)
     && String(bot.tool_chat_id) === String(update.chat_id) && String(bot.tool_user_id) === String(update.sender_user_id);

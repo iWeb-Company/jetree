@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { extractTelegramToolEvent, telegramApprovalKeyboard, telegramToolIdentityMatches } from '../src/lib/telegram-tool-consent';
+import { extractTelegramToolEvent, isTelegramApprovalReply, telegramApprovalKeyboard, telegramToolIdentityMatches } from '../src/lib/telegram-tool-consent';
 
 const id = '12345678-1234-1234-1234-123456789abc';
 const callback = { update_id: 1, callback_query: { id: 'callback', data: `jt:a:${id}`, from: { id: 42 }, message: { message_id: 10, chat: { id: 42, type: 'private' } } } };
+test('plain approval replies only recover a draft and do not parse arbitrary instructions as consent', () => {
+  for (const text of ['aprobado', 'Apruebo!', 'lo apruebo', 'rechazar', 'cancelado.']) assert.equal(isTelegramApprovalReply(text), true);
+  for (const text of ['Mandá un correo aprobado', 'aprobado: enviá otro correo', 'ok', 'Buscá videos', '']) assert.equal(isTelegramApprovalReply(text), false);
+});
 test('Telegram consent accepts only private identified users and structured approval callbacks', () => {
   assert.equal(extractTelegramToolEvent(callback)?.event.kind, 'approval');
   assert.equal(extractTelegramToolEvent({ ...callback, callback_query: { ...callback.callback_query, data: 'approve anything' } }), null);
