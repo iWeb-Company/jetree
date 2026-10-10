@@ -35,8 +35,14 @@ export async function downloadTelegramAudio(token: string, audio: TelegramAudio,
   return Buffer.concat(chunks);
 }
 
+export function transcriptionCandidates(preferred: string): ApiProvider[] {
+  // OpenRouter's free chat models do not make Whisper transcription free.
+  const order = preferred === 'custom' ? ['gemini', 'openai', 'custom'] : [preferred, 'gemini', 'openai', 'custom'];
+  return [...new Set(order)].filter(provider => ['gemini', 'openai', 'custom'].includes(provider)) as ApiProvider[];
+}
+
 export function transcriptionProvider(preferred: string, keys: Record<string, string>): ApiProvider {
-  for (const provider of [...new Set([preferred, 'gemini', 'openai', 'custom'])]) {
+  for (const provider of transcriptionCandidates(preferred)) {
     if (['gemini', 'openai', 'custom'].includes(provider) && keys[provider]) return provider as ApiProvider;
   }
   throw new Error('AUDIO_PROVIDER_REQUIRED');
@@ -59,8 +65,15 @@ export async function transcribeTelegramAudio(bytes: Buffer, audio: TelegramAudi
   } else throw new Error('AUDIO_PROVIDER_REQUIRED');
   const response = await fetcher(url, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(45_000) });
   const result = await response.json().catch(() => null);
-  if (!response.ok) throw new Error('AUDIO_TRANSCRIPTION_FAILED');
-  const text = provider === 'gemini' ? result?.candidates?.[0]?.content?.parts?.filter((p: any) => !p.thought).map((p: any) => p.text || '').join('').trim() : result?.text?.trim();
+  if (!response.ok) {
+    if (response.status === 402) throw new Error('AUDIO_CREDITS_REQUIRED');
+    if ([401, 403].includes(response.status)) throw new Error('AUDIO_TRANSCRIPTION_AUTH_FAILED');
+    if (response.status === 404) throw new Error('AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE');
+    if ([400, 413, 415, 422].includes(response.status)) throw new Error('AUDIO_TRANSCRIPTION_REJECTED');
+    throw new Error('AUDIO_TRANSCRIPTION_FAILED');
+  }
+  if (provider === 'gemini' && result?.candidates?.[0]?.finishReason === 'MAX_TOKENS') throw new Error('AUDIO_TOO_LARGE');
+  const text = provider === 'gemini' ? result?.candidates?.[0]?.content?.parts?.filter((p: any) => !p.thought).map((p: any) => p.text || '').join('').trim() : typeof result?.text === 'string' ? result.text.trim() : '';
   if (!text || typeof text !== 'string') throw new Error('AUDIO_EMPTY');
   if (text.length > 7500) throw new Error('AUDIO_TOO_LARGE');
   return text as string;

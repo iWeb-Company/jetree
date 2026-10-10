@@ -20,7 +20,7 @@ globalThis.fetch = async (input, options) => {
     const operation = url.pathname.split('/').at(-1);
     const requestBody = options?.body ? JSON.parse(options.body) : {};
     await mkdir('artifacts', { recursive: true });
-    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id }) + '\n');
+    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id, creditsNotice: requestBody.text?.includes('no tiene saldo suficiente') === true }) + '\n');
     if (operation === 'getFile') return Response.json({ ok: true, result: { file_path: 'voice/synthetic.oga', file_size: 4 } });
     if (operation === 'synthetic.oga') return new Response('ogg!');
     assert.ok(['sendMessage', 'sendChatAction'].includes(operation));
@@ -39,11 +39,12 @@ globalThis.fetch = async (input, options) => {
   if (!key.startsWith(issuer[0]) || key.endsWith('-invalid')) return Response.json({ error: 'Rejected synthetic key' }, { status: 401 });
   if ((options?.method ?? (input instanceof Request ? input.method : 'GET')) === 'POST') {
     const body = JSON.parse(options?.body ?? await input.clone().text());
+    if (url.pathname === '/api/v1/audio/transcriptions') return Response.json({error:'Synthetic insufficient credits'},{status:402});
     if (issuer[1] === 'gemini') {
       assert.equal(body.contents[0].parts[1].inlineData.mimeType, 'audio/ogg');
       return Response.json({ candidates: [{ content: { parts: [{ text: 'Respondé: audio comprendido' }] } }] });
     }
-    assert.equal(body.model, 'synthetic-deepseek');
+    assert.ok(['synthetic-deepseek','synthetic-custom:free'].includes(body.model));
     const audioPrompt = JSON.stringify(body.messages).includes('[Transcripción de audio]');
     return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: audioPrompt ? 'Synthetic audio understood' : 'Synthetic DeepSeek API OK' } }] });
   }
