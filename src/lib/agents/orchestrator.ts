@@ -3,7 +3,7 @@ import { ALL_CHATGPT_WORK_PLUGINS } from '@/lib/agents/plugins';
 import { allowedSubordinates, resolveDelegationTarget } from '@/lib/agents/delegation-policy';
 import { parseManagerPlan } from '@/lib/agents/planner';
 import { callAIProvider, ProviderCall } from '@/lib/agents/provider-adapter';
-import { respondWithTools, type ToolRunner } from '@/lib/agents/tool-loop';
+import { conversationToolGuidance, respondWithTools, type ToolRunner } from '@/lib/agents/tool-loop';
 
 export type ExecutionResult = {
   reply: string;
@@ -69,17 +69,21 @@ export async function executeAgentChat(
     message: agent.name + ' analiza la solicitud con ' + subordinates.length + ' subordinados permitidos.',
   });
 
-  const roster = subordinates.map(item => '- ID: ' + item.id + '; nombre: ' + item.name + '; especialidad: ' + item.description).join('\n');
+  const roster = subordinates.map(item => '- ID: ' + item.id + '; nombre: ' + item.name + '; especialidad: ' + item.description
+    + '; conectores habilitados: ' + (item.enabledPluginIds?.join(', ') || 'ninguno')).join('\n');
   const recentHistory = chatHistory.slice(-4).map(item => item.role + ': ' + item.content.slice(0, 1500)).join('\n');
   const managerPrompt = 'Sos ' + agent.name + ', manager de un equipo de agentes.\n'
     + 'Instrucciones:\n' + agent.systemPrompt.slice(0, 6000) + '\n'
     + formatPluginsContext(agent)
+    + conversationToolGuidance(agent)
     + 'Subordinados permitidos:\n' + roster + '\n\n'
     + 'Historial reciente:\n' + recentHistory + '\n\n'
     + 'Solicitud:\n' + userMessage + '\n\n'
     + 'Respondé solo JSON válido. Contrato directo: {"decision":"direct","managerNotes":"...","directResponse":"respuesta"}\n'
     + 'Contrato de delegación: {"decision":"delegate","managerNotes":"...","delegateTo":"ID exacto","subTask":"instrucción concreta"}\n'
-    + 'No inventes IDs ni delegues a un agente que no figure en la lista.';
+    + 'No inventes IDs ni delegues a un agente que no figure en la lista.'
+    + '\nPara pedidos que requieren herramientas, resolvé directamente si tenés el conector habilitado o delegá a un subordinado que lo tenga. Si nadie lo tiene, explicá qué conector debe habilitarse; no inventes resultados.'
+    + '\nAl delegar, incluí el contexto necesario de la conversación, sin inventar identificadores ni destinatarios.';
 
   const rawPlan = await providerCall(agent, managerPrompt, apiKeys);
   const plan = parseManagerPlan(rawPlan, subordinates.map(item => item.id));
@@ -113,6 +117,7 @@ export async function executeAgentChat(
 
   const specialistPrompt = 'Sos ' + specialist.name + '.\nInstrucciones:\n' + specialist.systemPrompt.slice(0, 6000) + '\n'
     + formatPluginsContext(specialist)
+    + '\nHistorial reciente (contexto de la solicitud):\n' + recentHistory
     + '\nTarea asignada por ' + agent.name + ':\n' + plan.subTask
     + '\n\nSolicitud original:\n' + userMessage;
   const specialistResult = await respondWithTools(specialist, specialistPrompt, apiKeys, providerCall, toolRunner);

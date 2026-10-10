@@ -806,6 +806,7 @@ export default function Home() {
                 </div>
 
                 <TaskBoard
+                  agents={agents}
                   tasks={tasks}
                   departments={departments}
                   selectedDepartmentId={selectedDepartmentFilter}

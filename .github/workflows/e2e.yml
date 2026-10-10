@@ -39,12 +39,17 @@ jobs:
           node tests/integration/agent-form.mjs
           node tests/integration/api-connections.mjs
           node tests/integration/telegram-audio.mjs
+          node tests/integration/gmail-search-tasks.mjs
+          node tests/integration/telegram-tools.mjs
       - name: Save API connection screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: api-connections-ui
-          path: artifacts/api-connections-*.png
+          path: |
+            artifacts/api-connections-*.png
+            artifacts/tasks-grouped-*.png
+            artifacts/telegram-tools-*.png
       - name: Stop disposable database
         if: always()
         run: npx --yes supabase@2.120.0 stop --workdir "$RUNNER_TEMP/jetree-supabase" --no-backup

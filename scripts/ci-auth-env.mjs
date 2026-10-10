@@ -14,12 +14,13 @@ const env = {
   JETREE_APP_URL: 'http://127.0.0.1:3057',
   JETREE_CREDENTIALS_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
   JETREE_TELEGRAM_WORKER_SECRET: randomBytes(32).toString('hex'),
-  JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT: '20',
+  JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT: '100',
   JETREE_DISPOSABLE_CI: 'true',
   GITHUB_OAUTH_CLIENT_ID: 'synthetic-client',
   GITHUB_OAUTH_CLIENT_SECRET: 'synthetic-secret',
   GOOGLE_OAUTH_CLIENT_ID: 'synthetic-client',
   GOOGLE_OAUTH_CLIENT_SECRET: 'synthetic-secret',
+  TAVILY_API_KEY: 'synthetic-tavily-key',
 };
 for (const [key, value] of Object.entries(env)) {
   assert.ok(!/[\r\n]/.test(value));

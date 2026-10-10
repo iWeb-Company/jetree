@@ -25,5 +25,19 @@ begin
   if claimed <> 1 then raise exception 'Next chat message not released'; end if;
   select count(*) into claimed from public.claim_telegram_updates(2);
   if claimed <> 1 then raise exception 'Scheduler and webhook did not share locks/order'; end if;
+  -- Persisting a reply keeps the processing lease until delivery finishes.
+  update public.telegram_updates set status='delivery_pending' where status='processing';
+  select count(*) into claimed from public.claim_telegram_updates(25);
+  if claimed <> 0 then raise exception 'Scheduler reclaimed an active delivery'; end if;
+  select count(*) into claimed from public.claim_telegram_updates_for_bot(bot_one,2);
+  if claimed <> 0 then raise exception 'Webhook reclaimed an active delivery'; end if;
+  update public.telegram_updates set locked_at=now()-interval '6 minutes' where bot_id=bot_one and status='delivery_pending';
+  select count(*) into claimed from public.claim_telegram_updates_for_bot(bot_one,2);
+  if claimed <> 1 then raise exception 'Expired delivery lease was not recovered'; end if;
+  select count(*) into claimed from public.claim_telegram_updates(25);
+  if claimed <> 0 then raise exception 'Scheduler bypassed recovered delivery lease'; end if;
+  update public.telegram_updates set locked_at=null where bot_id=bot_two and status='delivery_pending';
+  select count(*) into claimed from public.claim_telegram_updates(25);
+  if claimed <> 1 then raise exception 'Unlocked delivery retry was not claimed'; end if;
 end $$;
 rollback;
