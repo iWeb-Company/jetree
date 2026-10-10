@@ -6,12 +6,24 @@ export type ToolRunner = (agent: Agent, toolId: string, operation: string, input
   pendingApproval?: boolean; approvalId?: string; result?: unknown;
 }>;
 
+export function conversationToolGuidance(agent: Agent): string {
+  const enabled = TOOL_CONNECTORS.filter(item => agent.enabledPluginIds?.includes(item.id));
+  return '\nDetectá pedidos de herramientas por su intención, aunque el usuario no nombre el conector.'
+    + '\nCorreos, bandeja de entrada, leer, contestar o borrar emails corresponden a Gmail. Buscar videos corresponde a search_youtube; buscar información actual en Internet corresponde a search_web.'
+    + '\nUsá el historial para interpretar referencias como «ese correo», «contestale» o «más videos sobre eso». Si hay varios candidatos o falta el destinatario, preguntá antes de actuar.'
+    + '\nPara responder un correo, leé primero el mensaje real y verificá destinatario y contenido. Borrar significa mover a papelera, nunca eliminar definitivamente.'
+    + '\nLas búsquedas y lecturas necesitan resultados de herramientas antes de responder; no inventes correos, enlaces ni operaciones realizadas.'
+    + '\nConectores permitidos para este agente: ' + (enabled.map(item => item.id).join(', ') || 'ninguno') + '.'
+    + '\nSi el conector necesario no está habilitado, explicá que debe habilitarse en la configuración del agente. Nunca lo actives ni sustituyas sus permisos automáticamente.';
+}
+
 // A bounded structured decision loop works across all existing text providers.
 // The model proposes actions; authorization and approval remain server-side.
 export async function respondWithTools(agent: Agent, prompt: string, apiKeys: Record<string, string>, call: ProviderCall, run?: ToolRunner): Promise<string> {
   const connectors = TOOL_CONNECTORS.filter(item => agent.enabledPluginIds?.includes(item.id));
-  if (!run || !connectors.length) return call(agent, prompt, apiKeys);
+  if (!run || !connectors.length) return call(agent, prompt + conversationToolGuidance(agent), apiKeys);
   const contract = '\nHerramientas disponibles: ' + JSON.stringify(connectors)
+    + conversationToolGuidance(agent)
     + '\nElegí la herramienta según la solicitud. Respondé solamente un objeto JSON: '
     + '{"answer":"respuesta al usuario"} o {"toolId":"ID", "operation":"operación", "input":{...}}.'
     + '\nSolo una operación por paso. Nunca inventes IDs de archivos, repositorios o resultados. Si falta un dato, preguntalo con answer.'
