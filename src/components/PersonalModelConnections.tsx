@@ -37,15 +37,15 @@ export default function PersonalModelConnections() {
   };
   return <section className="space-y-3 rounded-xl border border-purple-800/50 p-4 text-xs">
     <h4 className="font-semibold text-white">Cuenta Google · conector personal</h4>
-    <p className="text-gray-400">Iniciá sesión con Google en tu equipo. Cada usuario conecta su propia cuenta. El equipo debe permanecer encendido. En el chat elegí esta conexión: no cambia automáticamente al consumo por API.</p>
-    <p className="text-gray-400">Primera versión: chat web con la selección automática de modelos del Gemini CLI. El catálogo API del agente se usa cuando elegís API; no representa los modelos de tu suscripción.</p>
+    <p className="text-amber-200">Conexión personal en actualización a Antigravity. La vinculación de equipos está temporalmente deshabilitada mientras verificamos el nuevo conector.</p>
+    <p className="text-gray-400">Google retiró el acceso personal de Gemini CLI. Podés seguir usando Gemini por API si lo elegís explícitamente; Jetree no cambia automáticamente a consumo por API.</p>
     <a href="/ayuda/conexiones#google" target="_blank" rel="noreferrer" className="block text-cyan-300 underline">Instalar y conectar mi equipo · guía paso a paso</a>
     {devices.map(device => <div key={device.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-gray-800 p-2">
       <span>{device.name} · {device.online ? 'Conectado' : 'Desconectado'}</span>
       <button disabled={busy} onClick={() => perform('DELETE', device.id)} className="text-rose-300">Revocar equipo</button>
     </div>)}
     <div className="flex flex-wrap gap-3">
-      <button disabled={busy} onClick={() => perform('POST')} className="rounded bg-purple-900 px-3 py-2 text-white">Vincular mi equipo</button>
+      <button disabled title="Antigravity en validación" className="rounded bg-purple-900 px-3 py-2 text-white opacity-50">Vinculación en actualización</button>
       <button disabled={busy} onClick={load} className="text-cyan-300">Actualizar estado</button>
     </div>
     {code && <input readOnly value={code} aria-label="Código de vinculación personal" className="w-full min-w-0 rounded bg-gray-900 p-2 font-mono" onFocus={event => event.currentTarget.select()} />}

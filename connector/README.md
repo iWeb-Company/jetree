@@ -1,23 +1,35 @@
-# Conector personal Google para Jetree
+# Conector personal Google / Antigravity para Jetree
 
-Primera versión para pruebas en dev. No activar en producción hasta completar las pruebas reales de dos usuarios, revocación, desconexión y herramientas. ChatGPT por suscripción requiere acceso autorizado. El chat Claude en Jetree queda por API; desde la aplicación oficial de Claude se pueden usar las herramientas del MCP de Jetree con permisos propios. Anthropic no admite planes Free/Pro/Max en Jetree bajo las condiciones actuales, según su respuesta al responsable.
+Versión de desarrollo 0.2.0-next.1 para Windows x64/ARM64. Login, consulta de modelos y respuesta real con Gemini 3.8 Flash Low verificados en Windows x64. Vinculación y relay siguen bloqueados hasta completar las pruebas integradas de dev y revocación. No es una versión funcional de producción todavía.
 
-Cada usuario instala su conector en su propio equipo con Node.js 22 o superior. No compartir la carpeta `.jetree-personal` ni una sesión Google entre usuarios. El CLI oficial guarda sus credenciales en un perfil exclusivo. Jetree recibe mensajes/respuestas temporales y una credencial de dispositivo, nunca el token Google. La computadora debe permanecer encendida.
+Google terminó el acceso de cuentas personales gratuitas, AI Pro y Ultra mediante Gemini CLI el 18 de junio de 2026. Una actualización o repetir el login anterior no resuelve UNSUPPORTED_CLIENT. Antigravity es la ruta oficial de reemplazo.
 
-1. Desde `/ayuda/conexiones#google`, descargar el archivo del conector y extraerlo en una carpeta propia. No se necesita acceso al repositorio privado.
-2. Ejecutar `npm ci` para instalar la versión fijada de Gemini CLI.
-3. Ejecutar `npm run login`; completar **Login with Google** en el navegador oficial y salir con `/quit`.
+## Probar la autenticación
 
-Si aparece la pregunta de confianza, elegir **Don't trust**. No se necesita confiar en la carpeta padre. Si el CLI se reinicia para aplicar esa elección y muestra «Login no completado», ejecutar `npm run login` nuevamente y completar el login; ese mensaje no significa que Google ya esté conectado.
-4. En Jetree, abrir **Conexiones de modelos → Cuenta Google → Vincular mi equipo**.
-5. Ejecutar `npm run pair`, ingresar el dominio exacto de dev o producción, el código (caduca en 5 minutos) y el nombre del equipo.
-6. Ejecutar `npm start`, mantener esta terminal abierta, y actualizar el estado del equipo en Jetree.
-7. En el chat de un agente Gemini, elegir el equipo en **Conexión para esta conversación**. El CLI selecciona su modelo por defecto según la cuenta; no utiliza el modelo del catálogo API del agente.
+1. Usar Node.js 22 o superior en una terminal de tu propio usuario, sin administrador/root.
+2. Extraer el conector en una carpeta propia. Ejecutar npm ci, luego npm run login.
+3. Se descarga Antigravity 1.3.1 desde el enlace del manifiesto oficial y se verifica SHA-512 antes de ejecutar; no se ejecuta un instalador, no se cambia PATH y se rechaza un binario modificado.
+4. Completar personalmente Google y los consentimientos oficiales. Verificar qué cuenta está seleccionada. No compartir códigos, contraseñas ni tokens. No importar configuraciones, plugins o herramientas de otra instalación.
+5. Al llegar al chat oficial, salir con /quit y confirmar el resultado de la prueba.
 
-Si la sesión está vencida, detener el conector y repetir `npm run login`. Si se revoca el equipo en Jetree, los trabajos se cancelan y debe generarse una nueva vinculación. Apagar el conector no cambia automáticamente a API. El login y los límites son los del Gemini CLI, no una promesa de consumo ilimitado. Telegram y el catálogo completo por cuenta quedan fuera de esta primera versión.
+## Prueba integrada exclusivamente en dev
 
-El conector bloquea herramientas locales, MCP, extensiones, hooks, habilidades y credenciales API/Vertex del entorno. GitHub/Drive se ejecutan únicamente mediante Jetree y conservan aprobación explícita para escrituras. No ejecutar como administrador/root.
+La versión de desarrollo permite `npm run pair -- --dev-preview` y `npm start -- --dev-preview`. Usar exclusivamente https://jetree-dev.iwebtecnology.com, elegir un modelo de la lista real y pegar en la terminal el código de vinculación creado por tu usuario en dev. No compartirlo. Producción se rechaza incluso con esta opción. La vinculación normal permanece deshabilitada hasta finalizar las pruebas de revocación y aislamiento.
 
-Datos locales: `~/.jetree-personal/`. Desvincular en Jetree revoca la credencial de transporte; para quitar la sesión Google local, usar `/auth` en `npm run login` o eliminar el perfil Google aislado después de detener el conector. Para revocar el consentimiento de Google, usar la sección de conexiones de tu cuenta Google.
+Antigravity controla la autenticación y el almacén seguro del sistema. Jetree no copia ni recibe tokens Google. El perfil de configuración usa ~/.jetree-personal/antigravity; la credencial de transporte Jetree permanece separada. No compartir estos archivos ni el usuario del sistema operativo entre cuentas Jetree. Un login puede requerir elegir la cuenta existente en el almacén seguro.
 
-Fuentes: https://geminicli.com/docs/get-started/authentication/, https://geminicli.com/docs/reference/configuration/, https://geminicli.com/docs/reference/policy-engine/.
+## Aislamiento y límites
+
+El conector escribe el perfil documentado de Antigravity con modo strict, listas allow/ask vacías y denegaciones de archivos, comandos, web y MCP. Selecciona un agente propio con tools vacías, sin subagentes, plugins, skills ni MCP. Usa una carpeta vacía y archivos de hooks/MCP vacíos. No hereda API keys, ADC, proxies, variables del backend ni permisos del entorno. La sesión real confirmó las denegaciones. Una prueba sintética de lectura/escritura/comandos no produjo llamadas de herramientas, filtración ni cambios de archivos; esto no sustituye el aislamiento del sistema operativo.
+
+La integración usa eventos NDJSON oficiales. Antes de enviar el prompt exige confirmación del agente, modelo Gemini y modo strict. La vinculación solicita elegir un modelo de la lista real de la cuenta; no usa el modelo predeterminado de Antigravity. Rechaza resultados parciales, duplicados, no exitosos y ejecuciones de herramientas/subagentes. La cancelación termina el árbol del proceso en Windows. No usa --dangerously-skip-permissions y no cambia a API como respaldo. La cuota depende del plan y de Google.
+
+Antes de habilitar relay: completar revocación y cancelación durante una petición real de Jetree y repetir aislamiento con dos usuarios. Antigravity puede conservar historial local: no se promete eliminación automática. Usar /logout para cerrar su sesión y revocar el consentimiento desde la cuenta Google cuando corresponda.
+
+Claude sigue usando MCP desde su aplicación oficial. OpenAI por suscripción permanece pendiente. Telegram y ejecuciones de servidor usan las conexiones API configuradas.
+
+Fuentes oficiales:
+- https://developers.googleblog.com/an-important-update-transitioning-gemini-cli-to-antigravity-cli/
+- https://antigravity.google/docs/cli/install/
+- https://antigravity.google/docs/cli/headless/
+- https://antigravity.google/docs/permissions/
