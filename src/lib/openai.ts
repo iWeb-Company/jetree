@@ -1,4 +1,14 @@
 import OpenAI from 'openai';
+import { freeLLMApiBaseUrl } from './server/freellmapi';
+
+export async function analyzeWithFreeLLMApi(prompt: string, apiKey: string, model: string) {
+  if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');
+  const client = new OpenAI({ apiKey, baseURL: freeLLMApiBaseUrl(), fetch: (input, options) => globalThis.fetch(input, { ...options, redirect: 'error' }), timeout: 25_000, maxRetries: 1 });
+  const response = await client.chat.completions.create({
+    model, max_tokens: 1200, messages: [{ role: 'user', content: prompt }],
+  });
+  return response.choices[0].message.content;
+}
 
 export async function analyzeWithDeepSeek(prompt: string, apiKey: string, model: string) {
   if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');

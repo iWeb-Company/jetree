@@ -8,6 +8,7 @@ const realFetch = globalThis.fetch;
 const failedDeliveries = new Set();
 const issuers = new Map([
   ['api.openai.com', ['sk-proj-synthetic-', 'openai']],
+  ['freellmapi-ci.invalid', ['freellmapi-synthetic-', 'freellmapi']],
   ['api.deepseek.com', ['sk-synthetic-deepseek-', 'deepseek']],
   ['api.anthropic.com', ['sk-ant-api03-synthetic-', 'claude']],
   ['generativelanguage.googleapis.com', ['AIzaSynthetic-', 'gemini']],
@@ -67,7 +68,7 @@ globalThis.fetch = async (input, options) => {
       assert.equal(body.contents[0].parts[1].inlineData.mimeType, 'audio/ogg');
       return Response.json({ candidates: [{ content: { parts: [{ text: 'Respondé: audio comprendido' }] } }] });
     }
-    assert.ok(['synthetic-deepseek','synthetic-custom:free'].includes(body.model));
+    assert.ok(['synthetic-deepseek','synthetic-custom:free','synthetic-freellmapi'].includes(body.model));
     const toolPrompt = body.messages?.map(item => item.content).join('\n') || '';
     if (toolPrompt.includes('[Telegram tools CI]')) {
       let decision;

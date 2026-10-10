@@ -43,7 +43,7 @@ export function decryptProviderSecret(secret: EncryptedSecret): string {
 
 export async function getUserProviderApiKey(
   userId: string,
-  provider: 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek',
+  provider: 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek' | 'freellmapi',
   connectionId?: string,
 ): Promise<string | null> {
   const service = getServiceSupabase();

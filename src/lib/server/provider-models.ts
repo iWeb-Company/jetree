@@ -1,11 +1,13 @@
 import type { ApiProvider } from './provider-health';
+import { freeLLMApiBaseUrl } from './freellmapi';
 
 export type ProviderModel = { value: string; label: string };
 
 export async function listProviderModels(provider: ApiProvider, key: string, fetcher: typeof fetch = fetch): Promise<ProviderModel[]> {
   const headers: Record<string, string> = {};
   let url: string;
-  if (provider === 'gemini') { url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000'; headers['x-goog-api-key'] = key; }
+  if (provider === 'freellmapi') { url = freeLLMApiBaseUrl() + '/models'; headers.Authorization = `Bearer ${key}`; }
+  else if (provider === 'gemini') { url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000'; headers['x-goog-api-key'] = key; }
   else if (provider === 'claude') { url = 'https://api.anthropic.com/v1/models?limit=1000'; headers['x-api-key'] = key; headers['anthropic-version'] = '2023-06-01'; }
   else { url = provider === 'custom' ? 'https://openrouter.ai/api/v1/models' : provider === 'deepseek' ? 'https://api.deepseek.com/models' : 'https://api.openai.com/v1/models'; headers.Authorization = `Bearer ${key}`; }
   const response = await fetcher(url, { headers, signal: AbortSignal.timeout(10_000), cache: 'no-store', redirect: 'error' });
@@ -18,5 +20,5 @@ export async function listProviderModels(provider: ApiProvider, key: string, fet
       const value = provider === 'gemini' ? row.name?.replace(/^models\//, '') : row.id;
       if (typeof value !== 'string' || !value || value.length > 200) return [];
       return [{ value, label: String(row.displayName || row.display_name || row.name || value).slice(0, 200) }];
-    }).slice(0, 1000);
+    });
 }

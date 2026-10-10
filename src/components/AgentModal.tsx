@@ -132,6 +132,8 @@ export default function AgentModal({
           { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Excelente en Código y Matices)' },
           { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Velocidad & Eficiencia)' },
         ];
+      case 'freellmapi':
+        return [{ value: 'auto', label: 'Auto (router FreeLLMAPI)' }];
       case 'deepseek':
         return [{ value: 'deepseek-chat', label: 'DeepSeek Chat' }, { value: 'deepseek-reasoner', label: 'DeepSeek Reasoner' }];
       case 'custom':
@@ -385,8 +387,8 @@ export default function AgentModal({
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {(['gemini', 'openai', 'claude', 'custom', 'deepseek'] as AIProvider[]).map(option => <button key={option} type="button" onClick={() => handleProviderChange(option)} className={`rounded-xl border p-3 text-left text-xs ${provider === option ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300' : 'border-cyan-950 bg-[#05070b] text-gray-400'}`}>
-                    <span className="block font-semibold">{({ gemini: 'Google Gemini', openai: 'OpenAI', claude: 'Claude', custom: 'OpenRouter', deepseek: 'DeepSeek' })[option]}</span>
+                  {(['gemini', 'openai', 'claude', 'custom', 'deepseek', 'freellmapi'] as AIProvider[]).map(option => <button key={option} type="button" onClick={() => handleProviderChange(option)} className={`rounded-xl border p-3 text-left text-xs ${provider === option ? 'border-cyan-500 bg-cyan-500/20 text-cyan-300' : 'border-cyan-950 bg-[#05070b] text-gray-400'}`}>
+                    <span className="block font-semibold">{({ gemini: 'Google Gemini', openai: 'OpenAI', claude: 'Claude', custom: 'OpenRouter', deepseek: 'DeepSeek', freellmapi: 'FreeLLMAPI' })[option]}</span>
                     <span className="mt-1 block text-[10px]">{isSubscribed(option) ? 'API configurada' : 'Configurar API'}</span>
                   </button>)}
                 </div>

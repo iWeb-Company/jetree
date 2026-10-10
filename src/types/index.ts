@@ -10,7 +10,7 @@ export type Department = {
 
 export type AgentRoleType = 'independent' | 'manager';
 
-export type AIProvider = 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek';
+export type AIProvider = 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek' | 'freellmapi';
 
 export type TelegramBotConfig = {
   botUsername?: string;           // @MiAgenteBot
@@ -25,7 +25,7 @@ export type AgentPlugin = {
   description: string;
   category: 'work' | 'tools' | 'productivity' | 'dev';
   icon: string;
-  providerCompatibility: ('openai' | 'gemini' | 'claude' | 'custom' | 'deepseek')[];
+  providerCompatibility: ('openai' | 'gemini' | 'claude' | 'custom' | 'deepseek' | 'freellmapi')[];
   enabledByDefault?: boolean;
 };
 
@@ -50,7 +50,7 @@ export type Agent = {
 
 export type UserSubscription = {
   id: string;
-  provider: 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek';
+  provider: 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek' | 'freellmapi';
   name: string;
   connected: boolean;
   userAccountEmail?: string;

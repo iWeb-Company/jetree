@@ -21,6 +21,7 @@ const env = {
   GOOGLE_OAUTH_CLIENT_ID: 'synthetic-client',
   GOOGLE_OAUTH_CLIENT_SECRET: 'synthetic-secret',
   TAVILY_API_KEY: 'synthetic-tavily-key',
+  FREELLMAPI_BASE_URL: 'http://freellmapi-ci.invalid:3001/v1',
 };
 for (const [key, value] of Object.entries(env)) {
   assert.ok(!/[\r\n]/.test(value));

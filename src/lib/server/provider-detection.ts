@@ -5,6 +5,7 @@ export type DetectionResult = { ok: true; provider: ApiProvider } | { ok: false;
 // Recognizable keys are sent only to their issuer. Legacy sk- keys overlap:
 // validate them at the two official read-only endpoints, never by inference.
 export function keyCandidates(key: string): ApiProvider[] {
+  if (/^freellmapi-[a-zA-Z0-9_-]+$/.test(key)) return ['freellmapi'];
   if (/^(?:AIza[\w-]+|AQ\.[\w.-]+)$/.test(key)) return ['gemini'];
   if (/^sk-ant-api[\w-]+$/.test(key)) return ['claude'];
   if (/^sk-or-v1-[\w-]+$/.test(key)) return ['custom'];

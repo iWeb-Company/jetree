@@ -68,7 +68,7 @@ export default function ApiConnectionsModal({ isOpen, onClose, userEmail, onConn
         <div><h3 id="model-connections-title" className="text-lg font-bold text-white">Conexiones de modelos</h3><p className="mt-1 break-all text-xs text-gray-400">Tus claves API · {userEmail}</p></div>
         <button disabled={busy} onClick={onClose} aria-label="Cerrar conexiones" className="rounded-lg p-2 text-gray-300">✕</button>
       </header>
-      <p className="text-sm text-gray-300">Pegá una clave API. Detectamos y validamos Google, Claude, OpenAI, OpenRouter o DeepSeek.</p>
+      <p className="text-sm text-gray-300">Pegá una clave API. Detectamos y validamos Google, Claude, OpenAI, OpenRouter, DeepSeek o FreeLLMAPI.</p>
       {!loaded && <button disabled={busy} onClick={() => load().catch(error => setNotice(error.message))} className="text-xs text-cyan-300">Cargar conexiones</button>}
       {connections.map(connection => <section key={connection.id} className="space-y-2 rounded-xl border border-cyan-950 bg-[#05070b] p-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-sm text-white">{connectionLabel(connection)}</h4><span className="text-xs text-gray-400">{connection.status === 'connected' ? 'Validada' : 'Requiere validación'}</span></div>
