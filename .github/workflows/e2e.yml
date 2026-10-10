@@ -38,6 +38,7 @@ jobs:
           node tests/integration/real-auth.mjs
           node tests/integration/agent-form.mjs
           node tests/integration/api-connections.mjs
+          node tests/integration/telegram-audio.mjs
       - name: Save API connection screenshots
         if: always()
         uses: actions/upload-artifact@v4
