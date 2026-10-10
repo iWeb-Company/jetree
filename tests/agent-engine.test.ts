@@ -29,6 +29,23 @@ const specialist = makeAgent({
   description: 'Writes code',
 });
 
+test('managers and independent agents can run their enabled Gmail and web tools', async () => {
+  for (const roleType of ['manager', 'independent'] as const) {
+    const agent = makeAgent({ roleType, enabledPluginIds: ['plugin-gmail-core', 'plugin-web-search'] });
+    let step = 0; const operations: string[] = [];
+    const result = await executeAgentChat(agent, 'Find emails and videos', [specialist], [], {}, async () => {
+      step++;
+      if (roleType === 'manager' && step === 1) return JSON.stringify({ decision: 'direct', managerNotes: '', directResponse: 'Use tools' });
+      const toolStep = step - (roleType === 'manager' ? 1 : 0);
+      if (toolStep === 1) return JSON.stringify({ toolId: 'plugin-gmail-core', operation: 'search_messages', input: { query: 'is:unread' } });
+      if (toolStep === 2) return JSON.stringify({ toolId: 'plugin-web-search', operation: 'search_youtube', input: { query: 'tutorial' } });
+      return JSON.stringify({ answer: 'Found real results' });
+    }, undefined, async (_agent, _tool, operation) => { operations.push(operation); return { result: [] }; });
+    assert.deepEqual(operations, ['search_messages', 'search_youtube']);
+    assert.equal(result.reply, 'Found real results');
+  }
+});
+
 test('manager plans require valid JSON and an allowed subordinate ID', () => {
   assert.throws(() => parseManagerPlan('not json', ['specialist-1']), /MANAGER_DECISION_INVALID/);
   assert.throws(() => parseManagerPlan(

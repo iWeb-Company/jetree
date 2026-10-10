@@ -78,6 +78,8 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/function-permissions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/model-devices.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/mcp.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/api-connections.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/telegram-audio.sql
       - name: Replay the audited existing schema and reconcile
         run: |
           psql -X -v ON_ERROR_STOP=1 -c 'create database jetree_replay'
@@ -91,6 +93,8 @@ jobs:
             psql -X -v ON_ERROR_STOP=1 --single-transaction -f "$migration"
           done
           psql -X -v ON_ERROR_STOP=1 -f tests/database/verify-seed.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/api-connections.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/telegram-audio.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/function-permissions.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/remote-isolation.sql
 

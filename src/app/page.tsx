@@ -8,7 +8,7 @@ import AgentModal from '@/components/AgentModal';
 import AgentChatDrawer from '@/components/AgentChatDrawer';
 import LiveMonitorFeed from '@/components/LiveMonitorFeed';
 import TaskBoard from '@/components/TaskBoard';
-import OAuthSubscriptionsModal from '@/components/OAuthSubscriptionsModal';
+import ApiConnectionsModal from '@/components/ApiConnectionsModal';
 import ToolConnectionsModal from '@/components/ToolConnectionsModal';
 import TelegramBotModal from '@/components/TelegramBotModal';
 import DepartmentMembersModal from '@/components/DepartmentMembersModal';
@@ -76,6 +76,7 @@ export default function Home() {
 
   // Conexiones de proveedor API propias del usuario (solo estado, nunca claves).
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([
+    { id: 'sub-deepseek', provider: 'deepseek', name: 'DeepSeek API', connected: false },
     {
       id: 'sub-gemini',
       provider: 'gemini',
@@ -105,7 +106,7 @@ export default function Home() {
 
   // Estados de Modales y Chat
   const [isAgentModalOpen, setIsAgentModalOpen] = useState(false);
-  const [isOAuthModalOpen, setIsOAuthModalOpen] = useState(false);
+  const [isApiModalOpen, setIsApiModalOpen] = useState(false);
   const [isToolConnectionsOpen, setIsToolConnectionsOpen] = useState(false);
   const [isTelegramModalOpen, setIsTelegramModalOpen] = useState(false);
   const [agentForTelegram, setAgentForTelegram] = useState<Agent | null>(null);
@@ -185,7 +186,7 @@ export default function Home() {
           const payload = await connectionsResponse.json();
           const connections = Array.isArray(payload.connections) ? payload.connections : [];
           setSubscriptions(current => current.map(item => {
-            const connection = connections.find((entry: any) => entry.provider === item.provider);
+            const connection = connections.find((entry: any) => entry.provider === item.provider && entry.metadata?.is_default);
             return {
               ...item,
               connected: connection?.status === 'connected',
@@ -670,14 +671,14 @@ export default function Home() {
 
             {/* Botón Gestión de conexiones API */}
             <button
-              onClick={() => setIsOAuthModalOpen(true)}
+              onClick={() => setIsApiModalOpen(true)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 text-purple-300 border border-purple-800/40 text-xs font-semibold transition-all shadow-sm"
               title="Administrar conexiones API propias"
             >
               <span>🔐</span>
               <span className="hidden sm:inline">Conexiones IA</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-200 font-mono">
-                {connectedProvidersCount}/4
+                {connectedProvidersCount}/5
               </span>
             </button>
 
@@ -805,6 +806,7 @@ export default function Home() {
                 </div>
 
                 <TaskBoard
+                  agents={agents}
                   tasks={tasks}
                   departments={departments}
                   selectedDepartmentId={selectedDepartmentFilter}
@@ -892,7 +894,7 @@ export default function Home() {
 
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <button
-                    onClick={() => setIsOAuthModalOpen(true)}
+                    onClick={() => setIsApiModalOpen(true)}
                     className="px-3.5 py-2.5 rounded-xl bg-purple-950/30 hover:bg-purple-900/40 text-purple-300 border border-purple-800/40 text-xs font-semibold transition-all flex items-center gap-1.5"
                   >
                     <span>🔐</span>
@@ -1013,14 +1015,14 @@ export default function Home() {
         agentToEdit={agentToEdit}
         onOpenSubscriptions={() => {
           setIsAgentModalOpen(false);
-          setIsOAuthModalOpen(true);
+          setIsApiModalOpen(true);
         }}
       />
 
       {/* MODAL DE CONEXIONES DE PROVEEDORES */}
-      <OAuthSubscriptionsModal
-        isOpen={isOAuthModalOpen}
-        onClose={() => setIsOAuthModalOpen(false)}
+      <ApiConnectionsModal
+        isOpen={isApiModalOpen}
+        onClose={() => setIsApiModalOpen(false)}
         userEmail={session.user.email}
         subscriptions={subscriptions}
         onConnectionChange={handleProviderConnectionChange}

@@ -1,4 +1,4 @@
-export type ApiProvider = 'openai' | 'gemini' | 'claude' | 'custom';
+export type ApiProvider = 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek';
 export type ProviderHealthCode = 'invalid_credentials' | 'rate_limited' | 'provider_unavailable' | 'network_error' | 'unknown';
 
 export type ProviderHealth = { ok: true } | { ok: false; code: ProviderHealthCode };
@@ -13,6 +13,8 @@ function endpointFor(provider: ApiProvider): { url: string; headers: Record<stri
       return { url: 'https://api.anthropic.com/v1/models?limit=1', headers: { 'anthropic-version': '2023-06-01' } };
     case 'custom':
       return { url: 'https://openrouter.ai/api/v1/key', headers: { 'X-Title': 'Jetree' } };
+    case 'deepseek':
+      return { url: 'https://api.deepseek.com/models', headers: {} };
   }
 }
 
@@ -30,7 +32,7 @@ export async function validateProviderApiKey(
 ): Promise<ProviderHealth> {
   const endpoint = endpointFor(provider);
   const headers = { ...endpoint.headers };
-  if (provider === 'openai' || provider === 'custom') headers.Authorization = `Bearer ${apiKey}`;
+  if (provider === 'openai' || provider === 'custom' || provider === 'deepseek') headers.Authorization = `Bearer ${apiKey}`;
   if (provider === 'gemini') headers['x-goog-api-key'] = apiKey;
   if (provider === 'claude') headers['x-api-key'] = apiKey;
 

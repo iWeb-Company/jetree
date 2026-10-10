@@ -1,5 +1,14 @@
 import OpenAI from 'openai';
 
+export async function analyzeWithDeepSeek(prompt: string, apiKey: string, model: string) {
+  if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');
+  const client = new OpenAI({ apiKey, baseURL: 'https://api.deepseek.com', fetch: globalThis.fetch, timeout: 25_000, maxRetries: 1 });
+  const response = await client.chat.completions.create({
+    model, max_tokens: 1200, messages: [{ role: 'user', content: prompt }],
+  });
+  return response.choices[0].message.content;
+}
+
 export async function analyzeWithChatGPT(prompt: string, apiKey: string, model: string = 'gpt-4o-mini') {
   if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');
   try {
@@ -22,6 +31,7 @@ export async function analyzeWithOpenRouter(prompt: string, apiKey: string, mode
   const client = new OpenAI({
     apiKey,
     baseURL: 'https://openrouter.ai/api/v1',
+    fetch: globalThis.fetch,
     timeout: 25_000,
     maxRetries: 1,
     defaultHeaders: { 'X-Title': 'Jetree' },
