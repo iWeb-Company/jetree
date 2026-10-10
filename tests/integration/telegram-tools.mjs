@@ -73,7 +73,11 @@ try {
   assert.equal((await groupCallback.json()).ignored, true);
   assert.equal(db(await service.from('agent_tool_approvals').select('status').eq('id', draft.pending_approval_id).single()).status, 'pending');
   assert.match((await decide(draft.pending_approval_id, 'a')).response_text, /ejecutada/);
+  const messagesBeforeReplay = (await readFile('artifacts/telegram-fixture-events.jsonl', 'utf8')).trim().split('\n').map(JSON.parse).filter(e => e.operation === 'sendMessage').length;
   assert.match((await decide(draft.pending_approval_id, 'a')).response_text, /ya fue resuelta/);
+  assert.match((await decide(draft.pending_approval_id, 'r')).response_text, /ya fue resuelta/);
+  const messagesAfterReplay = (await readFile('artifacts/telegram-fixture-events.jsonl', 'utf8')).trim().split('\n').map(JSON.parse).filter(e => e.operation === 'sendMessage').length;
+  assert.equal(messagesAfterReplay, messagesBeforeReplay, 'Repeated approval clicks must not add chat messages');
   const second = await say('[Telegram tools CI] Mandá un correo de prueba');
   assert.match((await decide(second.pending_approval_id, 'r')).response_text, /rechazada/);
   const third = await say('[Telegram tools CI] Mandá un correo de prueba');

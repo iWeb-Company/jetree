@@ -85,6 +85,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     if (update.tool_event && update.status !== 'delivery_pending') {
       const event = update.tool_event;
       let reply: string;
+      let notifyChat = true;
       if (event.kind === 'pair') {
         const { data: linked, error } = await service.from('telegram_bots').update({ tool_chat_id: update.chat_id, tool_user_id: update.sender_user_id, tool_pair_hash: null, tool_pair_expires_at: null })
           .eq('id', bot.id).eq('tool_pair_hash', event.hash).gt('tool_pair_expires_at', new Date().toISOString()).select('id').maybeSingle();
@@ -117,10 +118,18 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
             const code = error instanceof Error ? error.message : 'TOOL_OPERATION_FAILED';
             if (claimed) await finishToolApproval(bot.owner_user_id, event.approvalId, 'failed', code);
             reply = toolErrorMessage(code);
+            // A second button click only needs a callback toast, not another
+            // message in the conversation. The immutable approval is unchanged.
+            if (code === 'TOOL_APPROVAL_NOT_PENDING') notifyChat = false;
           }
           await fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: update.chat_id, message_id: event.messageId, reply_markup: { inline_keyboard: [] } }), redirect: 'error', signal: AbortSignal.timeout(10_000) }).catch(() => {});
         }
         await fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ callback_query_id: event.callbackId, text: reply.slice(0, 180) }), redirect: 'error', signal: AbortSignal.timeout(10_000) }).catch(() => {});
+      }
+      if (!notifyChat) {
+        const { error } = await service.from('telegram_updates').update({ status: 'completed', response_text: reply, locked_at: null, last_error: null }).eq('id', update.id);
+        if (error) throw new Error('DELIVERY_SAVE_FAILED');
+        return;
       }
       const { error } = await service.from('telegram_updates').update({ status: 'delivery_pending', response_text: reply }).eq('id', update.id);
       if (error) throw new Error('DELIVERY_SAVE_FAILED');
