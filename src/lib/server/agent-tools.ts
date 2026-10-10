@@ -1,3 +1,5 @@
+import { gmailRequest } from '@/lib/server/gmail-tools';
+import { webSearch } from '@/lib/server/web-search';
 import { getServiceSupabase } from '@/lib/server/auth';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getGithubConnectionAccess, getToolAccessToken } from '@/lib/server/tool-connections';
@@ -164,9 +166,11 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
   }
   if (callError || !call) throw new Error('TOOL_AUDIT_FAILED');
   try {
-    const token = await getToolAccessToken(userId, request.provider);
+    const token = request.provider === 'web_search' ? '' : await getToolAccessToken(userId, request.provider);
     const result = request.provider === 'github'
       ? await githubRequest(token, request.operation, request.input, await getGithubConnectionAccess(userId))
+      : request.provider === 'gmail' ? await gmailRequest(token, request.operation, request.input)
+      : request.provider === 'web_search' ? await webSearch(request.operation, request.input)
       : await driveRequest(token, request.operation, request.input);
     const summary = Array.isArray(result)
       ? `Se devolvieron ${result.length} resultados.`

@@ -1,4 +1,4 @@
-export type ToolProvider = 'github' | 'google_drive';
+export type ToolProvider = 'github' | 'google_drive' | 'gmail' | 'web_search';
 export type ToolOperation =
   | 'list_repositories'
   | 'get_file'
@@ -11,7 +11,10 @@ export type ToolOperation =
   | 'search_files'
   | 'get_text_file'
   | 'create_doc'
-  | 'trash_file';
+  | 'trash_file'
+  | 'search_messages' | 'get_message' | 'send_message' | 'reply_message'
+  | 'trash_message' | 'restore_message' | 'mark_read'
+  | 'search_web' | 'search_youtube';
 
 export type ToolRequest = { provider: ToolProvider; operation: ToolOperation; input: Record<string, unknown>; write: boolean };
 
@@ -59,6 +62,22 @@ export function jetreeBranchName(value: unknown): string {
 export function parseToolRequest(toolId: unknown, operation: unknown, rawInput: unknown): ToolRequest {
   if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) throw new Error('TOOL_INPUT_INVALID');
   const input = rawInput as Record<string, unknown>;
+  const maxResults = input.maxResults === undefined ? 5 : input.maxResults;
+  const resultLimit = () => { if (!Number.isInteger(maxResults) || Number(maxResults) < 1 || Number(maxResults) > 10) throw new Error('TOOL_INPUT_INVALID'); return Number(maxResults); };
+  if (toolId === 'plugin-web-search' && (operation === 'search_web' || operation === 'search_youtube')) return {
+    provider: 'web_search', operation, write: false, input: { query: text(input.query, 500), maxResults: resultLimit() },
+  };
+  if (toolId === 'plugin-gmail-core') {
+    if (operation === 'search_messages') return { provider: 'gmail', operation, write: false, input: { query: text(input.query ?? '', 500, false), maxResults: resultLimit(), ...(input.pageToken ? { pageToken: text(input.pageToken, 500) } : {}) } };
+    const messageId = () => { const id = text(input.messageId, 150); if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('TOOL_INPUT_INVALID'); return id; };
+    if (operation === 'get_message' || operation === 'trash_message' || operation === 'restore_message' || operation === 'mark_read') return { provider: 'gmail', operation, write: operation !== 'get_message', input: { messageId: messageId() } };
+    if (operation === 'send_message' || operation === 'reply_message') {
+      const to = text(input.to, 254); if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(to)) throw new Error('TOOL_INPUT_INVALID');
+      const subject = operation === 'send_message' ? text(input.subject, 300) : undefined;
+      if (subject && /[\r\n]/.test(subject)) throw new Error('TOOL_INPUT_INVALID');
+      return { provider: 'gmail', operation, write: true, input: { to, body: text(input.body, 10_000), ...(subject ? { subject } : { messageId: messageId() }) } };
+    }
+  }
   if (toolId === 'plugin-github-core') {
     if (operation === 'list_repositories') return { provider: 'github', operation, input: {}, write: false };
     if (operation === 'list_commits' || operation === 'list_branches') return {
@@ -105,6 +124,14 @@ export function parseToolRequest(toolId: unknown, operation: unknown, rawInput: 
 }
 
 export const TOOL_CONNECTORS = [
+  { id: 'plugin-gmail-core', name: 'Gmail', provider: 'gmail' as const, operations: ['search_messages', 'get_message', 'send_message', 'reply_message', 'trash_message', 'restore_message', 'mark_read'], inputs: {
+    search_messages: '{query,maxResults?,pageToken?} — consulta Gmail; devuelve IDs reales y cabeceras', get_message: '{messageId} — leer antes de contestar',
+    send_message: '{to,subject,body} — un destinatario; requiere aprobación', reply_message: '{messageId,to,body} — destinatario explícito, usar Reply-To o From leído; requiere aprobación',
+    trash_message: '{messageId} — papelera, requiere aprobación', restore_message: '{messageId} — restaurar, requiere aprobación', mark_read: '{messageId} — requiere aprobación',
+  } },
+  { id: 'plugin-web-search', name: 'Internet y YouTube', provider: 'web_search' as const, operations: ['search_web', 'search_youtube'], inputs: {
+    search_web: '{query,maxResults?} — buscar información actual; citar URLs obtenidas', search_youtube: '{query,maxResults?} — videos con enlaces, sin ver ni transcribir el video; citar URLs obtenidas',
+  } },
   { id: 'plugin-github-core', name: 'GitHub', provider: 'github' as const, operations: ['list_repositories', 'get_file', 'list_commits', 'list_branches', 'create_branch', 'create_pull_request', 'create_issue', 'create_file'], inputs: {
     list_repositories: '{}', get_file: '{owner,repo,path}', list_commits: '{owner,repo,branch?} — indicá branch si el usuario pide una rama; sin branch se consulta la predeterminada', list_branches: '{owner,repo}',
     create_branch: '{owner,repo,branch,base} — branch siempre jetree-branch-…; base debe existir',

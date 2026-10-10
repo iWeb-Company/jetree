@@ -5,12 +5,13 @@ import { toolErrorMessage } from '@/lib/tool-feedback';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-type Connection = { provider: 'github' | 'google_drive'; status: string; scopes: string[]; expires_at: string | null; account_label: string | null; githubAccess?: 'public' | 'private' };
+type Connection = { provider: 'github' | 'google_drive' | 'gmail'; status: string; scopes: string[]; expires_at: string | null; account_label: string | null; githubAccess?: 'public' | 'private' };
 type Approval = { id: string; agent_id: string; provider: string; tool_id: string; operation: string; input: Record<string, unknown>; created_at: string };
 
 export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [searchReady, setSearchReady] = useState(false);
   const [calls, setCalls] = useState<any[]>([]);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('');
@@ -27,6 +28,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'No se pudo cargar el estado de herramientas.');
     setConnections(payload.connections || []);
+    setSearchReady(Boolean(payload.searchReady));
     setGithubAccess(payload.connections?.find((item: Connection) => item.provider === 'github')?.githubAccess || 'public');
     setApprovals(payload.pendingApprovals || []);
     setCalls(payload.calls || []);
@@ -75,16 +77,17 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
     finally { setBusy(''); }
   };
 
-  const providerName = (provider: string) => provider === 'github' ? 'GitHub' : 'Google Drive';
+  const providerName = (provider: string) => provider === 'github' ? 'GitHub' : provider === 'gmail' ? 'Gmail' : provider === 'web_search' ? 'Internet y YouTube' : 'Google Drive';
   const connectorCards: Array<{ id: Connection['provider']; icon: string; title: string; description: string; scopes: string }> = [
     { id: 'github', icon: '🐙', title: 'GitHub', description: 'Elegí si el agente trabajará solo con repositorios públicos o también con los privados que autorices.', scopes: 'El acceso se limita al alcance que elijas; cada escritura requiere aprobación.' },
+    { id: 'gmail', icon: '✉️', title: 'Gmail', description: 'Buscá y leé correos. Revisá y aprobá antes de enviar, contestar o modificar tu buzón.', scopes: 'Permiso para leer, enviar y mover correos a la papelera.' },
     { id: 'google_drive', icon: '📁', title: 'Google Drive', description: 'Busca, lee y crea documentos propiedad de esta integración. Cada creación requiere aprobación.', scopes: 'Scope OAuth: drive.file' },
   ];
 
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
     <div className="max-h-[92dvh] w-full max-w-3xl space-y-5 overflow-y-auto rounded-2xl border border-cyan-950/80 bg-[#080c14] p-4 sm:p-6 shadow-2xl">
       <div className="flex items-start justify-between border-b border-cyan-950/60 pb-4">
-        <div><h3 className="text-lg font-bold text-white">🔌 Conectores de herramientas</h3><p className="mt-1 text-xs text-gray-400">Autorizá GitHub y Drive por usuario; los tokens se guardan cifrados en el servidor.</p></div>
+        <div><h3 className="text-lg font-bold text-white">🔌 Conectores de herramientas</h3><p className="mt-1 text-xs text-gray-400">Conectá tus cuentas y habilitá las herramientas en cada manager o agente.</p></div>
         <button onClick={onClose} aria-label="Cerrar" className="h-8 w-8 rounded-lg border border-gray-800 bg-gray-900 text-gray-400">✕</button>
       </div>
 
@@ -109,6 +112,11 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
           </section>;
         })}
       </div>
+
+      <section className="rounded-xl border border-cyan-950/60 bg-[#05070b] p-4 space-y-2">
+        <h4 className="font-semibold text-white">🌐 Internet y YouTube</h4>
+        <p className="text-xs text-gray-400">{searchReady ? 'Disponible. Habilitá Internet y YouTube en los conectores del manager o agente.' : 'Pendiente de configuración por el administrador.'}</p>
+      </section>
 
       <section className="space-y-3"><h4 className="text-sm font-semibold text-white">Aprobaciones pendientes ({approvals.length})</h4>
         {approvals.length === 0 ? <p className="text-xs text-gray-500">No hay escrituras esperando aprobación.</p> : approvals.map(item => <article key={item.id} className="space-y-2 rounded-xl border border-amber-800/50 bg-amber-950/10 p-3">
