@@ -27,12 +27,15 @@ try {
   const started = Date.now(); assert.equal((await post(update)).status, 200);
   assert.ok(Date.now() - started < 5000, 'Webhook ACK must not await inference');
   async function waitStatus(id, expected) {
+    let state;
     for (let n = 0; n < 100; n++) {
       const row = db(await service.from('telegram_updates').select('*').eq('bot_id', bot.id).eq('update_id', id).maybeSingle());
       if (row?.status === expected) return row;
+      state = {status:row?.status,error:row?.last_error,attempts:row?.attempts};
+      if (row?.status === 'failed') throw new Error('Telegram fixture failed: '+JSON.stringify(state));
       await new Promise(resolve => setTimeout(resolve, 200));
     }
-    throw new Error('Immediate webhook processing did not finish');
+    throw new Error('Immediate webhook processing did not finish: '+JSON.stringify(state));
   }
   const completed = await waitStatus(9001, 'completed');
   assert.equal(completed.audio_transcript, 'Respondé: audio comprendido'); assert.equal(completed.response_text, 'Synthetic audio understood');

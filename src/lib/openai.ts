@@ -31,6 +31,7 @@ export async function analyzeWithOpenRouter(prompt: string, apiKey: string, mode
   const client = new OpenAI({
     apiKey,
     baseURL: 'https://openrouter.ai/api/v1',
+    fetch: globalThis.fetch,
     timeout: 25_000,
     maxRetries: 1,
     defaultHeaders: { 'X-Title': 'Jetree' },
