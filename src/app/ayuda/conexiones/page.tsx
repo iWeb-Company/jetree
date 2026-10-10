@@ -8,6 +8,8 @@ export default function ConnectionGuide() {
     <p>Una clave no corresponde a un único modelo: habilita el catálogo del proveedor. OpenRouter permite acceder a modelos de diferentes compañías a través de su propia API.</p>
     <p>Las claves se cifran en el servidor y nunca se devuelven al navegador. Para identificar claves antiguas que comparten el prefijo sk-, se consultan los endpoints oficiales de OpenAI y DeepSeek. No se generan respuestas ni se consume inferencia durante la validación.</p>
     <p>Si una clave falla, Jetree muestra el error. Elegí y validá otra explícitamente. El acceso a modelos mediante suscripciones, OAuth y equipos locales está pausado.</p>
-    <p>Las herramientas GitHub y Google Drive conservan sus conexiones y aprobaciones habituales.</p>
+    <h2 className="text-xl font-semibold">Herramientas de managers y agentes</h2>
+    <p>En Conectores de herramientas podés conectar GitHub, Google Drive y Gmail. Después habilitá las herramientas en cada manager o agente. Gmail permite buscar, leer, enviar y responder correos, marcar como leído y mover a papelera o restaurar. Revisá las acciones pendientes en el panel de aprobaciones antes de enviarlas o ejecutarlas.</p>
+    <p>Habilitá Internet y YouTube para buscar información actual y videos con enlaces a las fuentes. La búsqueda debe estar configurada por el administrador. Encontrar un video no significa que el agente pueda verlo o transcribirlo.</p>
   </article></main>;
 }
