@@ -16,8 +16,8 @@ try {
   await rm('artifacts/telegram-fixture-events.jsonl', { force: true });
   user = db(await service.auth.admin.createUser({ email: `audio-${randomBytes(8).toString('hex')}@example.invalid`, password: randomBytes(24).toString('base64url')+'!Aa1', email_confirm: true })).user;
   department = db(await service.from('departments').insert({ name: 'Audio CI', created_by: user.id }).select('id').single());
-  const agent = db(await service.from('agents').insert({ department_id: department.id, created_by: user.id, name: 'Audio CI', provider: 'deepseek', model: 'synthetic-deepseek' }).select('id').single());
-  for (const [provider, key] of [['gemini', 'AIzaSynthetic-audio'], ['deepseek', 'sk-synthetic-deepseek-audio']]) {
+  const agent = db(await service.from('agents').insert({ department_id: department.id, created_by: user.id, name: 'Audio CI', provider: 'custom', model: 'synthetic-custom:free' }).select('id').single());
+  for (const [provider, key] of [['gemini', 'AIzaSynthetic-audio'], ['custom', 'sk-or-v1-synthetic-audio']]) {
     const secret = encrypt(key); db(await service.rpc('save_provider_api_connection', { owner_id: user.id, detected_provider: provider, encrypted_value: secret.ciphertext, encrypted_iv: secret.iv, encrypted_tag: secret.auth_tag }));
   }
   const botSecret = encrypt('synthetic-audio-token'); const webhookSecret = 'synthetic-audio-webhook';
@@ -27,12 +27,15 @@ try {
   const started = Date.now(); assert.equal((await post(update)).status, 200);
   assert.ok(Date.now() - started < 5000, 'Webhook ACK must not await inference');
   async function waitStatus(id, expected) {
+    let state;
     for (let n = 0; n < 100; n++) {
       const row = db(await service.from('telegram_updates').select('*').eq('bot_id', bot.id).eq('update_id', id).maybeSingle());
       if (row?.status === expected) return row;
+      state = {status:row?.status,error:row?.last_error,attempts:row?.attempts};
+      if (row?.status === 'failed') throw new Error('Telegram fixture failed: '+JSON.stringify(state));
       await new Promise(resolve => setTimeout(resolve, 200));
     }
-    throw new Error('Immediate webhook processing did not finish');
+    throw new Error('Immediate webhook processing did not finish: '+JSON.stringify(state));
   }
   const completed = await waitStatus(9001, 'completed');
   assert.equal(completed.audio_transcript, 'Respondé: audio comprendido'); assert.equal(completed.response_text, 'Synthetic audio understood');
@@ -58,7 +61,15 @@ try {
   assert.equal(afterRetry.filter(e=>e.operation==='getFile').length,2,'Delivery retry must not redownload or retranscribe audio');
   assert.equal(db(await service.from('messages').select('id').eq('telegram_update_id',pending.id)).length,1);
   assert.equal(db(await service.from('agent_executions').select('id').eq('conversation_id',db(await service.from('telegram_chat_sessions').select('conversation_id').eq('bot_id',bot.id).eq('chat_id',54321).single()).conversation_id)).length,1,'Delivery retry must not rerun inference');
-  console.log('PASS immediate webhook processing, voice transcription, typing, deduplication, oversized rejection and cached delivery retry');
+  db(await service.from('provider_connections').delete().eq('user_id',user.id).eq('provider','gemini'));
+  const withoutCredits = { ...update, update_id:9004, message:{ ...update.message, chat:{id:98765} } };
+  assert.equal((await post(withoutCredits)).status,200);
+  const denied = await waitStatus(9004,'failed');
+  assert.equal(denied.last_error,'AUDIO_CREDITS_REQUIRED'); assert.equal(denied.attempts,1);
+  await new Promise(resolve=>setTimeout(resolve,300));
+  const notices = (await readFile('artifacts/telegram-fixture-events.jsonl','utf8')).trim().split('\n').map(line=>JSON.parse(line));
+  assert.ok(notices.some(e=>e.chatId===98765 && e.creditsNotice),'Missing immediate explanation of insufficient transcription credits');
+  console.log('PASS immediate webhook processing, Google transcription for free OpenRouter chat, typing, deduplication, cached delivery retry and immediate insufficient-credit notice');
 } finally {
   if (department) {
     // Remove task assignments before deleting their agents (the DB validates every assignment).

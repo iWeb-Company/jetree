@@ -3,7 +3,7 @@ import { decryptProviderSecret, getUserProviderApiKey } from '@/lib/server/provi
 import { executeAgentChat } from '@/lib/agents/orchestrator';
 import type { Agent } from '@/types';
 import { assertTelegramOwnerAccess, reserveTelegramExecution } from '@/lib/telegram-worker-guards';
-import { audioFormat, downloadTelegramAudio, transcribeTelegramAudio, transcriptionProvider, startTelegramTyping } from './telegram-media';
+import { audioFormat, downloadTelegramAudio, transcribeTelegramAudio, transcriptionProvider, transcriptionCandidates, startTelegramTyping } from './telegram-media';
 
 const MAX_ATTEMPTS = 5;
 
@@ -29,7 +29,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
   const fail = async (error: unknown, taskId?: string) => {
     const rawReason = error instanceof Error ? error.message : '';
     const reason = /^[A-Z0-9_]{1,80}$/.test(rawReason) ? rawReason : 'EXECUTION_FAILED';
-    const terminal = attempt >= MAX_ATTEMPTS || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY'].includes(reason);
+    const terminal = attempt >= MAX_ATTEMPTS || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
     await service.from('telegram_updates').update({
       status: terminal ? 'failed' : (update.status === 'delivery_pending' ? 'delivery_pending' : 'pending'),
       attempts: attempt, next_attempt_at: backoff(attempt), locked_at: null,
@@ -41,6 +41,10 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     }).eq('id', taskId || update.task_id);
     if (terminal && reason.startsWith('AUDIO_') && botToken) {
       const hint = reason === 'AUDIO_PROVIDER_REQUIRED' ? 'Para procesar audios, conectá una clave API de Google, OpenAI u OpenRouter en Jetree.'
+        : reason === 'AUDIO_CREDITS_REQUIRED' ? 'El proveedor de transcripción no tiene saldo suficiente. Los modelos gratuitos de chat de OpenRouter no incluyen Whisper. Podés conectar Google para transcribir o cargar saldo en el proveedor.'
+        : reason === 'AUDIO_TRANSCRIPTION_AUTH_FAILED' ? 'El proveedor rechazó la clave para transcribir audio. Revisá la conexión API seleccionada en Jetree.'
+        : reason === 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE' ? 'El modelo de transcripción no está disponible en ese proveedor. Conectá Google u OpenAI para procesar audios.'
+        : reason === 'AUDIO_TRANSCRIPTION_REJECTED' ? 'El proveedor rechazó este audio. Probá con una nota de voz nueva o conectá Google para transcribir.'
         : reason === 'AUDIO_TOO_LARGE' ? 'El audio supera el límite de 5 minutos, 10 MB o la transcripción es demasiado larga. Enviá un audio más corto.'
         : reason === 'AUDIO_FORMAT_UNSUPPORTED' ? 'No puedo leer ese formato de audio. Enviá una nota de voz, MP3, WAV, M4A o WebM.'
         : 'No pude transcribir el audio. Probá con una nota de voz más clara o enviá el texto.';
@@ -82,8 +86,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       audioFormat(update.audio_file);
       if (!update.audio_transcript) {
         const transcriptionKeys: Record<string, string> = {};
-        for (const provider of [...new Set([agentRow.provider, 'gemini', 'openai', 'custom'])]) {
-          if (!['gemini', 'openai', 'custom'].includes(provider)) continue;
+        for (const provider of transcriptionCandidates(agentRow.provider)) {
           const key = await getUserProviderApiKey(bot.owner_user_id, provider);
           if (key) { transcriptionKeys[provider] = key; break; }
         }

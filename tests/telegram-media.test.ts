@@ -15,7 +15,9 @@ test('audio limits and transcription keys use selected providers only', () => {
   assert.throws(() => audioFormat({ ...audio, duration: 301 }), /AUDIO_TOO_LARGE/);
   assert.throws(() => audioFormat({ ...audio, size: MAX_AUDIO_BYTES + 1 }), /AUDIO_TOO_LARGE/);
   assert.throws(() => audioFormat({ ...audio, mimeType: 'text/html' }), /FORMAT_UNSUPPORTED/);
-  assert.equal(transcriptionProvider('custom', { gemini: 'google', custom: 'router' }), 'custom');
+  assert.equal(transcriptionProvider('custom', { gemini: 'google', custom: 'router' }), 'gemini');
+  assert.equal(transcriptionProvider('custom', { openai: 'openai', custom: 'router' }), 'openai');
+  assert.equal(transcriptionProvider('custom', { custom: 'router' }), 'custom');
   assert.equal(transcriptionProvider('claude', { gemini: 'google' }), 'gemini');
   assert.throws(() => transcriptionProvider('deepseek', { deepseek: 'key' }), /PROVIDER_REQUIRED/);
 });
@@ -48,4 +50,11 @@ test('typing renews while processing and stops, including when Telegram is unava
   await new Promise(resolve => setTimeout(resolve, 35)); await stop();
   const stoppedCount = calls; assert.ok(calls >= 2);
   await new Promise(resolve => setTimeout(resolve, 30)); assert.equal(calls, stoppedCount);
+});
+
+test('transcription identifies permanent provider failures without exposing responses or credentials', async () => {
+  for (const [status, code] of [[402,'AUDIO_CREDITS_REQUIRED'],[401,'AUDIO_TRANSCRIPTION_AUTH_FAILED'],[403,'AUDIO_TRANSCRIPTION_AUTH_FAILED'],[404,'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE'],[400,'AUDIO_TRANSCRIPTION_REJECTED'],[429,'AUDIO_TRANSCRIPTION_FAILED'],[503,'AUDIO_TRANSCRIPTION_FAILED']] as const) {
+    await assert.rejects(transcribeTelegramAudio(Buffer.from('ogg!'),audio,'custom','synthetic-secret',async()=>Response.json({ error:'private provider details synthetic-secret' },{status})),error => error instanceof Error && error.message === code);
+  }
+  await assert.rejects(transcribeTelegramAudio(Buffer.from('ogg!'),audio,'custom','synthetic',async()=>Response.json({text:42})),/AUDIO_EMPTY/);
 });
