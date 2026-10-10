@@ -5,7 +5,7 @@ import type { Agent } from '@/types';
 import { assertTelegramOwnerAccess, reserveTelegramExecution } from '@/lib/telegram-worker-guards';
 import { audioFormat, downloadTelegramAudio, transcribeTelegramAudio, transcriptionProvider, transcriptionCandidates, startTelegramTyping } from './telegram-media';
 import { claimToolApproval, executeAuthorizedTool, finishToolApproval, rejectToolApproval } from './agent-tools';
-import { telegramApprovalKeyboard, telegramToolIdentityMatches } from '@/lib/telegram-tool-consent';
+import { isTelegramApprovalReply, telegramApprovalKeyboard, telegramToolIdentityMatches } from '@/lib/telegram-tool-consent';
 import { toolErrorMessage } from '@/lib/tool-feedback';
 
 const MAX_ATTEMPTS = 5;
@@ -145,6 +145,34 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       return;
     }
 
+    // Plain consent cannot authorize a write. Recover the actual latest draft
+    // bound to this private user/chat instead of asking the model to create one.
+    if (!update.tool_event && !update.audio_file && !update.pending_approval_id && isTelegramApprovalReply(update.message_text)) {
+      if (!toolIdentity) throw new Error('TELEGRAM_TOOL_CHAT_NOT_LINKED');
+      await requireLiveToolChat();
+      const { data: binding, error } = await service.from('telegram_tool_approvals')
+        .select('approval_id,approval:agent_tool_approvals!inner(user_id,agent_id,status)')
+        .eq('bot_id', bot.id).eq('chat_id', update.chat_id).eq('telegram_user_id', update.sender_user_id)
+        .eq('approval.user_id', bot.owner_user_id).eq('approval.status', 'pending')
+        .order('created_at', { ascending: false }).limit(1).maybeSingle();
+      if (error) throw new Error('TELEGRAM_APPROVAL_CHECK_FAILED');
+      const target = binding?.approval as unknown as { agent_id: string } | undefined;
+      if (binding && target && (target.agent_id === agentRow.id || (agentRow.role_type === 'manager' && agentRow.subordinate_ids?.includes(target.agent_id)))) {
+        const { error: saveError } = await service.from('telegram_updates').update({ pending_approval_id: binding.approval_id, tool_response: true }).eq('id', update.id);
+        if (saveError) throw new Error('DELIVERY_SAVE_FAILED');
+        update.pending_approval_id = binding.approval_id;
+      } else {
+        const reply = 'No hay una acción pendiente para aprobar en este chat. Pedí una acción nueva; cuando se prepare, usá sus botones Aprobar o Rechazar. Escribir «aprobado» no ejecuta acciones.';
+        const { error: saveError } = await service.from('telegram_updates').update({ status: 'delivery_pending', response_text: reply, tool_response: true }).eq('id', update.id);
+        if (saveError) throw new Error('DELIVERY_SAVE_FAILED');
+        update.status = 'delivery_pending';
+        await requireLiveToolChat();
+        await sendTelegram(token, Number(update.chat_id), reply);
+        await service.from('telegram_updates').update({ status: 'completed', locked_at: null }).eq('id', update.id);
+        return;
+      }
+    }
+
     // A retry after creating an approval must reuse its immutable draft, never
     // infer or create a second write. Tools are never available to unlinked chats.
     if (update.pending_approval_id) {
@@ -152,7 +180,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       await requireLiveToolChat();
       const { data: pending, error } = await service.from('agent_tool_approvals').select('operation,input,status').eq('id', update.pending_approval_id).eq('user_id', bot.owner_user_id).single();
       if (error || !pending) throw new Error('TELEGRAM_APPROVAL_CHECK_FAILED');
-      const text = pending.status === 'pending' ? `Acción pendiente: ${pending.operation}\n${JSON.stringify(pending.input, null, 2)}\nRevisá el detalle y elegí Aprobar o Rechazar.` : 'Esta aprobación ya fue resuelta.';
+      const text = pending.status === 'pending' ? `Última acción pendiente: ${pending.operation}\n${JSON.stringify(pending.input, null, 2)}\nRevisá el detalle y usá los botones Aprobar o Rechazar. Escribir «aprobado» no ejecuta la acción.` : 'Esta aprobación ya fue resuelta.';
       await sendTelegram(token, Number(update.chat_id), text, pending.status === 'pending' ? update.pending_approval_id : undefined);
       await service.from('telegram_updates').update({ status: 'completed', locked_at: null, response_text: text }).eq('id', update.id);
       if (update.task_id) await service.from('tasks').update({ status: 'completed', result: text }).eq('id', update.task_id);

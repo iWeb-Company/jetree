@@ -72,6 +72,12 @@ try {
   const groupCallback = await post({ update_id: ++nextId, callback_query: { id: 'group', data: `jt:a:${draft.pending_approval_id}`, from: { id: 42 }, message: { message_id: 10, chat: { id: 42, type: 'group' } } } });
   assert.equal((await groupCallback.json()).ignored, true);
   assert.equal(db(await service.from('agent_tool_approvals').select('status').eq('id', draft.pending_approval_id).single()).status, 'pending');
+  const draftsBeforeText = db(await service.from('agent_tool_approvals').select('id').eq('user_id', user.id)).length;
+  const recovered = await say('aprobado');
+  assert.equal(recovered.pending_approval_id, draft.pending_approval_id, 'Plain approval reuses the bound draft');
+  assert.match(recovered.response_text, /botones/);
+  assert.equal(db(await service.from('agent_tool_approvals').select('id').eq('user_id', user.id)).length, draftsBeforeText, 'Plain approval must not create a second draft');
+  assert.equal(db(await service.from('agent_tool_approvals').select('status').eq('id', draft.pending_approval_id).single()).status, 'pending', 'Plain consent cannot execute');
   assert.match((await decide(draft.pending_approval_id, 'a')).response_text, /ejecutada/);
   const messagesBeforeReplay = (await readFile('artifacts/telegram-fixture-events.jsonl', 'utf8')).trim().split('\n').map(JSON.parse).filter(e => e.operation === 'sendMessage').length;
   assert.match((await decide(draft.pending_approval_id, 'a')).response_text, /ya fue resuelta/);
@@ -83,11 +89,15 @@ try {
   const third = await say('[Telegram tools CI] Mandá un correo de prueba');
   db(await service.from('agents').update({ enabled_tool_ids: [] }).eq('id', specialist.id));
   assert.match((await decide(third.pending_approval_id, 'a')).response_text, /no tiene permiso/);
+  const noPending = await say('aprobado');
+  assert.equal(noPending.pending_approval_id, null);
+  assert.match(noPending.response_text, /No hay una acción pendiente/);
   db(await service.from('agents').update({ enabled_tool_ids: ['plugin-gmail-core', 'plugin-web-search'] }).eq('id', specialist.id));
   const events = (await readFile('artifacts/gmail-fixture-events.jsonl', 'utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(events.filter(e => e.method === 'POST').length, 1, 'Only the single approved draft may send mail');
   const telegramEvents = (await readFile('artifacts/telegram-fixture-events.jsonl', 'utf8')).trim().split('\n').map(JSON.parse);
   const card = telegramEvents.find(e => e.replyMarkup?.inline_keyboard?.[0]?.[0]?.callback_data === `jt:a:${draft.pending_approval_id}`); assert.ok(card, 'Chat receives approval buttons');
+  assert.ok(telegramEvents.filter(e => e.replyMarkup?.inline_keyboard?.[0]?.[0]?.callback_data === `jt:a:${draft.pending_approval_id}`).length >= 2, 'Recovered draft restores the same approval buttons');
   browser = await chromium.launch({ headless: true }); const page = await browser.newPage();
   await page.goto(origin); await page.locator('input[type=email]').fill(email); await page.locator('input[type=password]').fill(password);
   await page.getByRole('button', { name: 'Acceder al Workspace' }).click(); await page.getByRole('button', { name: 'Cerrar Sesión' }).waitFor({ timeout: 60000 });
