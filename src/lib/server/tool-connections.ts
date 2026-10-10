@@ -62,9 +62,9 @@ export async function storeToolConnection(userId: string, provider: ToolProvider
   if (!credentials.access_token || credentials.access_token.length > 8192) throw new Error('TOOL_OAUTH_TOKEN_INVALID');
   if (!credentials.refresh_token) {
     const service = getServiceSupabase();
-    const { data: existing } = await service.from('tool_connections').select('ciphertext, iv, auth_tag')
+    const { data: existing } = await service.from('tool_connections').select('ciphertext, iv, auth_tag, account_label')
       .eq('user_id', userId).eq('provider', provider).maybeSingle();
-    if (existing) {
+    if (existing && accountLabel && existing.account_label === accountLabel) {
       try {
         const prior = JSON.parse(decryptProviderSecret(existing)) as OAuthCredentials;
         credentials = { ...credentials, refresh_token: prior.refresh_token };
