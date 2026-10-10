@@ -15,6 +15,26 @@ const issuers = new Map([
 ]);
 globalThis.fetch = async (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (url.hostname === 'oauth2.googleapis.com' && url.pathname === '/token') {
+    const body = new URLSearchParams(String(options?.body));
+    assert.ok(body.get('code') === 'synthetic-gmail-code' || body.get('refresh_token') === 'synthetic-gmail-refresh');
+    return Response.json({ access_token: 'synthetic-gmail-token', refresh_token: 'synthetic-gmail-refresh', expires_in: 3600, scope: 'openid email https://www.googleapis.com/auth/gmail.modify' });
+  }
+  if (url.hostname === 'openidconnect.googleapis.com') {
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer synthetic-gmail-token');
+    return Response.json({ email: 'gmail-fixture@example.invalid' });
+  }
+  if (url.hostname === 'gmail.googleapis.com') {
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer synthetic-gmail-token');
+    if (options?.method === 'POST') return Response.json({ id: 'synthetic-mail', threadId: 'synthetic-thread' });
+    if (url.pathname.endsWith('/messages')) return Response.json({ messages: [{ id: 'synthetic-mail' }] });
+    return Response.json({ id: 'synthetic-mail', threadId: 'synthetic-thread', payload: { mimeType: 'text/plain', headers: [{ name: 'From', value: 'sender@example.invalid' }, { name: 'Subject', value: 'Synthetic email' }, { name: 'Message-ID', value: '<synthetic@example.invalid>' }], body: { data: Buffer.from('Synthetic email text').toString('base64url') } } });
+  }
+  if (url.hostname === 'api.tavily.com') {
+    assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer synthetic-tavily-key');
+    const body = JSON.parse(String(options?.body));
+    return Response.json({ results: [{ title: 'Synthetic source', url: body.include_domains ? 'https://www.youtube.com/watch?v=synthetic' : 'https://example.invalid/source', content: 'Synthetic current information' }] });
+  }
   if (url.hostname === 'api.telegram.org') {
     assert.ok(url.pathname.includes('botsynthetic-audio-token/'), 'Fixture refuses real Telegram tokens');
     const operation = url.pathname.split('/').at(-1);

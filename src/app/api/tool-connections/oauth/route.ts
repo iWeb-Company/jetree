@@ -1,3 +1,4 @@
+import { GOOGLE_TOOL_SCOPES, googleToolScopeGranted } from '@/lib/google-tool-scopes';
 import { NextResponse } from 'next/server';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { appBaseUrl, consumeOAuthState, createOAuthState, storeToolConnection, toolOAuthCallbackUrl, type GithubAccess, type OAuthCredentials } from '@/lib/server/tool-connections';
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
     try {
       const { user } = await requireUser(request);
       const provider = url.searchParams.get('provider');
-      if (provider !== 'github' && provider !== 'google_drive') return NextResponse.json({ error: 'Conector inválido.' }, { status: 400 });
+      if (provider !== 'github' && provider !== 'google_drive' && provider !== 'gmail') return NextResponse.json({ error: 'Conector inválido.' }, { status: 400 });
       const clientId = provider === 'github' ? process.env.GITHUB_OAUTH_CLIENT_ID : process.env.GOOGLE_OAUTH_CLIENT_ID;
       if (!clientId) return NextResponse.json({ error: 'El OAuth del conector no está configurado en el servidor.' }, { status: 503 });
       const access = url.searchParams.get('githubAccess');
@@ -36,7 +37,7 @@ export async function GET(request: Request) {
         authUrl.searchParams.set('scope', access === 'private' ? 'read:user repo' : 'read:user public_repo');
         authUrl.searchParams.set('allow_signup', 'false');
       } else {
-        authUrl.searchParams.set('scope', 'openid email profile https://www.googleapis.com/auth/drive.file');
+        authUrl.searchParams.set('scope', 'openid email profile ' + GOOGLE_TOOL_SCOPES[provider]);
         authUrl.searchParams.set('access_type', 'offline');
         authUrl.searchParams.set('prompt', 'consent');
       }
@@ -85,6 +86,7 @@ export async function GET(request: Request) {
       if (!response.ok) return failRedirect('oauth_exchange_failed');
       const token = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; token_type?: string };
       if (!token.access_token) return failRedirect('oauth_exchange_failed');
+      if ((provider !== 'gmail' && provider !== 'google_drive') || !googleToolScopeGranted(provider, token.scope)) return failRedirect('oauth_scope_incomplete');
       credentials = { access_token: token.access_token, refresh_token: token.refresh_token, expires_at: token.expires_in ? Date.now() + token.expires_in * 1000 : undefined, scope: token.scope, token_type: token.token_type };
       const profileResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', { headers: { Authorization: `Bearer ${token.access_token}` }, signal: AbortSignal.timeout(10_000) });
       if (!profileResponse.ok) return failRedirect('oauth_identity_failed');

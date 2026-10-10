@@ -20,6 +20,7 @@ const env = {
   GITHUB_OAUTH_CLIENT_SECRET: 'synthetic-secret',
   GOOGLE_OAUTH_CLIENT_ID: 'synthetic-client',
   GOOGLE_OAUTH_CLIENT_SECRET: 'synthetic-secret',
+  TAVILY_API_KEY: 'synthetic-tavily-key',
 };
 for (const [key, value] of Object.entries(env)) {
   assert.ok(!/[\r\n]/.test(value));
