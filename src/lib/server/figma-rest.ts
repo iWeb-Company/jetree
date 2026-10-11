@@ -4,6 +4,12 @@ import { normalizeImage } from './chat-image-store';
 
 const cache = new Map<string, { until: number; data: Record<string, any> }>();
 const cooldowns = new Map<string, number>();
+export function invalidateFigmaReads(fileKey: string) {
+  for (const key of cache.keys()) {
+    const path = key.slice(64).split('?')[0];
+    if (path === `/files/${fileKey}` || path.startsWith(`/files/${fileKey}/`) || path === `/images/${fileKey}`) cache.delete(key);
+  }
+}
 export async function boundedFigmaBody(response: Response, max: number): Promise<Buffer> {
   if (Number(response.headers.get('content-length')) > max) { await response.body?.cancel(); throw new Error('FIGMA_RESPONSE_TOO_LARGE'); }
   const reader = response.body?.getReader(); if (!reader) throw new Error('TOOL_PROVIDER_UNAVAILABLE');

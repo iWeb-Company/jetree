@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { figmaFileKey, parseFigmaCommands, parseFigmaInput } from '../../src/lib/figma-contract';
 import { assertToolEnabled, parseToolRequest } from '../../src/lib/agents/tool-catalog';
-import { boundedFigmaBody, compactFigmaNode, figmaApi, renderFigmaNode } from '../../src/lib/server/figma-rest';
+import { boundedFigmaBody, compactFigmaNode, figmaApi, invalidateFigmaReads, renderFigmaNode } from '../../src/lib/server/figma-rest';
 import { conversationToolGuidance } from '../../src/lib/agents/tool-loop';
 import type { Agent } from '../../src/types';
 
@@ -36,6 +36,12 @@ test('Figma honors Retry-After and stops repeated calls for a throttled token',a
   let count=0;const fake=(async()=>{count++;return new Response(null,{status:429,headers:{'retry-after':'60'}});}) as typeof fetch;
   await assert.rejects(figmaApi('synthetic-throttled','/me','GET',undefined,fake),/TOOL_PROVIDER_RATE_LIMITED/);
   await assert.rejects(figmaApi('synthetic-throttled','/me','GET',undefined,fake),/TOOL_PROVIDER_RATE_LIMITED/);assert.equal(count,1);
+});
+test('Figma applied changes invalidate cached reads of the same file',async()=>{
+  let calls=0;const fake=(async()=>Response.json({version:++calls})) as typeof fetch;
+  await figmaApi('synthetic-cache','/files/CacheFile123?depth=2','GET',undefined,fake);
+  await figmaApi('synthetic-cache','/files/CacheFile123?depth=2','GET',undefined,fake);assert.equal(calls,1);
+  invalidateFigmaReads('CacheFile123');await figmaApi('synthetic-cache','/files/CacheFile123?depth=2','GET',undefined,fake);assert.equal(calls,2);
 });
 test('Figma response streaming rejects oversized bodies even without Content-Length',async()=>{
   const response=new Response(new ReadableStream({start(controller){controller.enqueue(new Uint8Array(101));controller.close();}}));

@@ -3,7 +3,7 @@ import { figmaFileKey, type FigmaOperation, parseFigmaCommands } from '@/lib/fig
 import type { Agent } from '@/types';
 import { getServiceSupabase } from './auth';
 import { getToolAccessToken, storeToolConnection } from './tool-connections';
-import { figmaApi, figmaRead, renderFigmaNode } from './figma-rest';
+import { figmaApi, figmaRead, invalidateFigmaReads, renderFigmaNode } from './figma-rest';
 import { describeImages } from './image-provider';
 import { decryptProviderSecret, getUserProviderApiKey } from './provider-secrets';
 import { normalizeImage } from './chat-image-store';
@@ -120,6 +120,7 @@ export async function completeFigmaJob(session: Awaited<ReturnType<typeof requir
   }
   const { data: finished, error: finishError } = await service.from('figma_jobs').update({ status: body.status, result: safeResult, error_code: body.status === 'applied' ? null : 'FIGMA_PLUGIN_INCOMPLETE', preview_path: previewPath, finished_at: now() }).eq('id', id).in('status', ['leased','uncertain']).select('id').maybeSingle();
   checked(finishError); if (!finished) throw new Error('FIGMA_JOB_NOT_ACTIVE');
+  invalidateFigmaReads(session.file_key);
   await notifyFigmaJob({ ...job, status: body.status, result: safeResult, preview_path: previewPath });
   return { ok: true };
 }

@@ -8,7 +8,7 @@ La migración `20261011183941_figma_tools.sql` debe estar aplicada en Supabase d
 
 ```bash
 sudo cp -p /opt/jetree/environments/dev/schema.sha256 /opt/jetree/environments/dev/schema.sha256.before-figma
-printf '%s\n' '3fe2b6b3309d322f4315892b5eb8f115173739ce02f3b58671fc9e8895382eaf' | sudo tee /opt/jetree/environments/dev/schema.sha256
+printf '%s\n' '31302c56130a8b6e585350051352bb518ac3f27cfea5b15fe2045defa8751595' | sudo tee /opt/jetree/environments/dev/schema.sha256
 ```
 
 El merge desencadena el deploy normal. No cambiar la huella de producción.
