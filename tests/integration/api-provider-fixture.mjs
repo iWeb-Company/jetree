@@ -31,7 +31,7 @@ globalThis.fetch = async (input, options) => {
         const response = await realFetch(process.env.NEXT_PUBLIC_SUPABASE_URL+'/rest/v1/figma_sessions?'+query,{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY}});
         assert.equal(response.status,200);marker=(await response.json())[0]?.marker;
       }
-      return Response.json({name:'Synthetic design',editorType:'figma',role:'editor',version:'1',document:{id:'0:0',type:'DOCUMENT',sharedPluginData:{jetree:{bridge:marker}},children:[{id:'0:1',type:'CANVAS',name:'Page',children:[{id:'1:2',type:'FRAME',name:'Screen'}]}]}});
+      return Response.json({name:'Synthetic design',editorType:'figma',role:'owner',version:'1',document:{id:'0:0',type:'DOCUMENT',sharedPluginData:{jetree:{bridge:marker}},children:[{id:'0:1',type:'CANVAS',name:'Page',children:[{id:'1:2',type:'FRAME',name:'Screen'}]}]}});
     }
     throw new Error('Unsupported synthetic Figma endpoint');
   }

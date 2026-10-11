@@ -54,8 +54,13 @@ alter table public.figma_jobs enable row level security;
 revoke all on public.figma_files, public.figma_pair_codes, public.figma_sessions, public.figma_jobs from anon, authenticated;
 grant all on public.figma_files, public.figma_pair_codes, public.figma_sessions, public.figma_jobs to service_role;
 
-insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
-values ('figma-previews','figma-previews',false,5242880,array['image/png']) on conflict (id) do nothing;
+-- Minimal PostgreSQL CI has no Storage service. Real Supabase environments do.
+do $$ begin
+  if to_regclass('storage.buckets') is not null then
+    insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+    values ('figma-previews','figma-previews',false,5242880,array['image/png']) on conflict (id) do nothing;
+  end if;
+end $$;
 
 -- File row lock serializes all agents and plugin instances for the same file.
 -- An expired lease is uncertain: never replay a canvas mutation automatically.

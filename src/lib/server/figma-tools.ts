@@ -89,7 +89,7 @@ export async function executeFigmaTool(userId: string, agent: any, operation: Fi
   if (operation === 'apply_figma_changes') {
     if (!approvalId) throw new Error('TOOL_APPROVAL_NOT_PENDING');
     const metadata = await figmaApi(token, `/files/${file}?depth=1`, 'GET', undefined, fetch, true);
-    if (metadata.editorType !== 'figma' || metadata.role !== 'editor') throw new Error('FIGMA_EDIT_ACCESS_REQUIRED');
+    if (metadata.editorType !== 'figma' || !['editor','owner'].includes(metadata.role)) throw new Error('FIGMA_EDIT_ACCESS_REQUIRED');
     const { data, error } = await service.from('figma_jobs').insert({ user_id: userId, file_key: file, agent_id: agent.id, approval_id: approvalId, conversation_id: conversationId || null, commands: parseFigmaCommands(input.commands), summary: input.summary }).select('id').single();
     checked(error); if (!data) throw new Error('FIGMA_STORAGE_FAILED');
     return { queued: true, jobId: data.id, status: 'queued', message: 'Cambio aprobado y en cola. Se aplicará cuando el plugin esté conectado en este archivo. Todavía no fue aplicado.' };
