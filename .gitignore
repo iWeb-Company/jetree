@@ -39,3 +39,4 @@ yarn-error.log*
 /public/downloads/jetree-google-connector.tar.gz
 /supabase/.temp/
 /artifacts/
+/public/figma-plugin/
