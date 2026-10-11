@@ -17,6 +17,24 @@ const issuers = new Map([
 ]);
 globalThis.fetch = async (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (url.hostname === 'api.figma.com') {
+    const token = new Headers(options?.headers).get('X-Figma-Token');
+    assert.match(token || '', /^synthetic-figma-[0-9a-f-]{36}$/);
+    const owner = token.slice('synthetic-figma-'.length);
+    if (url.pathname === '/v1/me') return Response.json({ id: owner, handle: 'Synthetic Figma' });
+    if (url.pathname.startsWith('/v1/files/')) {
+      const fileKey = url.pathname.split('/')[3];
+      if (url.pathname.endsWith('/comments')) return Response.json({ comments: [{ id:'comment1',message:'Synthetic comment',user:{handle:'Designer'} }] });
+      let marker = 'wrong-file';
+      if (url.searchParams.has('plugin_data') && fileKey !== 'WrongFile123') {
+        const query = new URLSearchParams({ select:'marker',user_id:'eq.'+owner,file_key:'eq.'+fileKey,revoked_at:'is.null',order:'created_at.desc',limit:'1' });
+        const response = await realFetch(process.env.NEXT_PUBLIC_SUPABASE_URL+'/rest/v1/figma_sessions?'+query,{headers:{apikey:process.env.SUPABASE_SERVICE_ROLE_KEY,Authorization:'Bearer '+process.env.SUPABASE_SERVICE_ROLE_KEY}});
+        assert.equal(response.status,200);marker=(await response.json())[0]?.marker;
+      }
+      return Response.json({name:'Synthetic design',editorType:'figma',role:'editor',version:'1',document:{id:'0:0',type:'DOCUMENT',sharedPluginData:{jetree:{bridge:marker}},children:[{id:'0:1',type:'CANVAS',name:'Page',children:[{id:'1:2',type:'FRAME',name:'Screen'}]}]}});
+    }
+    throw new Error('Unsupported synthetic Figma endpoint');
+  }
   if (url.hostname === 'oauth2.googleapis.com' && url.pathname === '/token') {
     const body = new URLSearchParams(String(options?.body));
     assert.ok(body.get('code') === 'synthetic-gmail-code' || body.get('refresh_token') === 'synthetic-gmail-refresh');

@@ -18,6 +18,11 @@ export const PLUGIN_CATEGORIES: { id: PluginCategory; label: string; icon: strin
 
 export const ALL_CHATGPT_WORK_PLUGINS: AgentPlugin[] = [
   {
+    id: 'plugin-figma-core', name: 'Figma', description: 'Lee archivos, analiza diseños y consulta comentarios. Comentar y editar requiere aprobación; la edición espera al plugin abierto en Figma.',
+    category: 'installed', icon: '🎨', providerCompatibility: ['openai', 'gemini', 'claude', 'custom', 'deepseek', 'groq'],
+    operations: ['list_figma_files', 'get_figma_file', 'get_figma_nodes', 'inspect_figma', 'list_figma_comments', 'post_figma_comment (con aprobación)', 'apply_figma_changes (con aprobación y plugin)', 'get_figma_jobs'],
+  },
+  {
     id: 'plugin-gmail-core', name: 'Gmail', description: 'Busca y lee correos. Enviar, contestar, marcar como leído y mover a papelera requiere aprobación.',
     category: 'installed', icon: '✉️', providerCompatibility: ['openai', 'gemini', 'claude', 'custom', 'deepseek', 'groq'],
     operations: ['search_messages', 'get_message', 'send_message (con aprobación)', 'reply_message (con aprobación)', 'trash_message (con aprobación)', 'restore_message (con aprobación)', 'mark_read (con aprobación)'],

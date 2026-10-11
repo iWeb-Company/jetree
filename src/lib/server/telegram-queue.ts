@@ -120,9 +120,11 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
               claimed = true;
               const target = await service.from('agents').select('id').eq('id', approved.agent_id).eq('department_id', agentRow.department_id).is('deleted_at', null).maybeSingle();
               if (target.error || !target.data) throw new Error('TOOL_AGENT_ACCESS_DENIED');
-              await executeAuthorizedTool(service, bot.owner_user_id, approved.agent_id, approved.tool_id, approved.operation, approved.input, event.approvalId, approved.conversation_id);
+              const output = await executeAuthorizedTool(service, bot.owner_user_id, approved.agent_id, approved.tool_id, approved.operation, approved.input, event.approvalId, approved.conversation_id);
               await finishToolApproval(bot.owner_user_id, event.approvalId, 'completed');
-              reply = 'Acción aprobada, ejecutada y registrada en Jetree.';
+              reply = 'result' in output && output.result && typeof output.result === 'object' && 'queued' in output.result && output.result.queued
+                ? 'Cambio aprobado y en cola. Se aplicará cuando el plugin esté conectado en este archivo Figma. Todavía no fue aplicado.'
+                : 'Acción aprobada, ejecutada y registrada en Jetree.';
             }
           } catch (error) {
             const code = error instanceof Error ? error.message : 'TOOL_OPERATION_FAILED';

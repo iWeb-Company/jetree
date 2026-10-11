@@ -1,0 +1,13 @@
+{
+  "name": "Jetree · Agentes",
+  "api": "1.0.0",
+  "editorType": ["figma"],
+  "main": "code.js",
+  "ui": "ui.html",
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["https://jetree-dev.iwebtecnology.com", "https://jetree.iwebtecnology.com"],
+    "devAllowedDomains": ["http://127.0.0.1:3057"],
+    "reasoning": "Recibir exclusivamente los cambios aprobados en Jetree y devolver su resultado."
+  }
+}

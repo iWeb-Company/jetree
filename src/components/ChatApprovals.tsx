@@ -38,7 +38,7 @@ export default function ChatApprovals({ conversationId, refreshKey }: { conversa
       if (!response.ok) throw new Error(payload.error || 'No se pudo completar la operación.');
       setItems(current => current.filter(approval => approval.id !== item.id));
       if (payload.message) window.dispatchEvent(new CustomEvent('jetree-tool-result', { detail: { message: payload.message, conversationId: payload.conversationId } }));
-      setNotice(decision === 'approve' ? 'Acción ejecutada y registrada.' : 'Acción rechazada.');
+      setNotice(decision === 'approve' ? payload.result?.queued ? 'Cambio aprobado y en cola. Espera al plugin Figma.' : 'Acción ejecutada y registrada.' : 'Acción rechazada.');
     } catch (error) { setNotice(error instanceof Error ? error.message : 'No se pudo completar la operación.'); }
     finally { setBusy(''); }
   };
