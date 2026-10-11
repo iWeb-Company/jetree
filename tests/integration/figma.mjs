@@ -32,6 +32,21 @@ try{
   for(const agent of agents){assert.equal((await call(agent,'list_figma_files',{})).body.result.files.length,1);assert.equal((await call(agent,'get_figma_file',{fileKey:'Synthetic123'})).status,200);}
   for(const agent of agents){const view=await call(agent,'inspect_figma',{fileKey:'Synthetic123',nodeIds:['1:2'],question:'Describí la pantalla'});assert.equal(view.status,200,JSON.stringify(view.body));assert.match(view.body.result.description,/Synthetic image understood/);}
   assert.equal((await call(agents[0],'get_figma_file',{fileKey:'Synthetic123'},users[1])).status,403);
+  for(const agent of agents){
+    for(const operation of ['get_figma_file','get_figma_nodes','list_figma_comments','inspect_figma']){
+      const result=await call(agent,operation,{fileKey:'https://www.figma.com/design/Unregistered123/Test',nodeIds:['1:2'],question:'Describí la pantalla'});
+      assert.equal(result.status,200,JSON.stringify(result.body));
+      assert.notEqual((await call(agent,operation,{fileKey:'DeniedFile123',nodeIds:['1:2']})).status,200,'Figma permissions remain authoritative');
+    }
+  }
+  assert.equal((await api(user,'/api/figma')).body.files.length,1,'Reading never registers a file for writing');
+  assert.notEqual((await api(user,'/api/figma',{action:'pair',fileKey:'Unregistered123'})).status,200);
+  assert.notEqual((await call(agents[0],'get_figma_jobs',{fileKey:'Unregistered123'})).status,200);
+  for(const [operation,input] of [['post_figma_comment',{message:'Blocked comment'}],['apply_figma_changes',{summary:'Blocked edit',commands:[{op:'create_frame'}]}]]){
+    const pending=await call(agents[0],operation,{fileKey:'Unregistered123',...input});assert.equal(pending.status,202);
+    const result=await api(user,'/api/agent-tools/approvals',{approvalId:pending.body.approvalId,decision:'approve'});
+    assert.equal(result.status,502);assert.equal(result.body.code,'FIGMA_FILE_NOT_REGISTERED');
+  }
   const pair=await api(user,'/api/figma',{action:'pair',fileKey:'Synthetic123'});assert.equal(pair.status,200);
   const paired=await bridge(null,{action:'pair_start',code:pair.body.code});assert.equal(paired.status,200);
   assert.equal((await bridge(null,{action:'pair_start',code:pair.body.code})).status,400);

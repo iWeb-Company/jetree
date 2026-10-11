@@ -18,7 +18,7 @@ export default function FigmaConnectionsPanel({ headers }: { headers: () => Prom
   const act=async(action:string,input:Record<string,unknown>={})=>{
     if(busy)return;setBusy(true);setNotice('');
     try{const response=await fetch('/api/figma',{method:'POST',headers:{...await headers(),'Content-Type':'application/json'},body:JSON.stringify({action,...input})});const data=await response.json();if(!response.ok)throw new Error(data.error);
-      if(action==='connect'){setToken('');setNotice('Figma conectado. Agregá los archivos y habilitá Figma en cada agente que vaya a usarlos.');}
+      if(action==='connect'){setToken('');setNotice('Figma conectado. Habilitá Figma en tus agentes: pueden leer por enlace sin registrar cada archivo. Agregá solo los archivos que quieras comentar o editar.');}
       else if(action==='register'){setUrl('');setNotice('Archivo registrado. Podés leerlo desde el chat y vincular el plugin para editar.');}
       else if(action==='pair'){setCode(data.code);setNotice('Código válido durante 10 minutos, de un solo uso. Abrí el archivo indicado y pegalo únicamente en el plugin Jetree.');}
       else if(action==='disconnect'){setCode('');setNotice('Token eliminado y plugins desconectados de Jetree. También podés revocar el token desde tu cuenta Figma.');}
@@ -32,14 +32,14 @@ export default function FigmaConnectionsPanel({ headers }: { headers: () => Prom
   const field='w-full rounded-lg border border-gray-800 bg-gray-950 p-2 text-xs text-white';
   return <section aria-label="Conexión Figma" className="space-y-3 rounded-xl border border-cyan-950/60 bg-[#05070b] p-4">
     <div className="flex items-center justify-between"><h4 className="font-semibold text-white">🎨 Figma</h4><span className="text-xs text-cyan-200">{connected?'Conectado':'Desconectado'}</span></div>
-    <p className="text-xs text-gray-400">Managers y agentes pueden leer capas, analizar pantallas y consultar comentarios desde web o Telegram. Comentar y editar requiere tu aprobación. Las ediciones esperan al plugin abierto en el archivo.</p>
+    <p className="text-xs text-gray-400">Managers y agentes pueden leer y analizar cualquier archivo accesible con tu cuenta: pasales su enlace por web o Telegram, sin registrarlo ni abrir el plugin. Para comentar o editar, registrá el archivo y aprobá la acción. Las ediciones esperan al plugin abierto en el archivo.</p>
     {!connected ? <form onSubmit={event=>{event.preventDefault();act('connect',{token});}} className="space-y-2">
       <label className="block text-xs text-gray-300">Token personal de Figma<input aria-label="Token personal de Figma" className={field} type="password" autoComplete="off" value={token} onChange={event=>setToken(event.target.value)} required /></label>
       <p className="text-[11px] text-gray-400">Crealo en Figma → Settings → Security → Personal access tokens. Permisos: current_user:read, file_content:read, file_comments:read y file_comments:write. Jetree lo guarda cifrado.</p>
       <button className={button} disabled={busy||!token}>Conectar Figma</button>
     </form> : <><p className="text-xs text-gray-400">Cuenta: {state.connection?.account_label}</p><button className={button} disabled={busy} onClick={()=>act('disconnect')}>Desconectar Figma y plugins</button>
       <form onSubmit={event=>{event.preventDefault();act('register',{url});}} className="flex flex-col gap-2 sm:flex-row"><input aria-label="Enlace de archivo Figma" className={field} placeholder="https://www.figma.com/design/…" value={url} onChange={event=>setUrl(event.target.value)} required /><button className={button} disabled={busy||!url}>Agregar archivo</button></form>
-      <p className="text-[11px] text-gray-400">Solo estos archivos quedan disponibles para los agentes que habilites. Necesitás permiso de edición en Figma para modificar capas.</p>
+      <p className="text-[11px] text-gray-400">Estos archivos habilitan comentarios y vinculación del plugin. La lectura por enlace usa los permisos de tu cuenta y no requiere esta lista. Necesitás permiso de edición en Figma para modificar capas. La API no enumera automáticamente todos tus proyectos.</p>
     </>}
     <details className="text-xs text-gray-300"><summary className="cursor-pointer text-cyan-200">Instalar el plugin Jetree en Figma</summary>
       <ol className="mt-2 list-decimal space-y-2 pl-5"><li><a href="/figma-plugin/jetree-figma.zip" download className="text-cyan-300 underline">Descargar el plugin</a> y descomprimirlo.</li><li>En Figma Desktop, Plugins → Development → New plugin → Figma Design. Creá un plugin con interfaz.</li><li>Copiá code.js y ui.html descargados a su carpeta. En manifest.json conservá el id que creó Figma y reemplazá los otros campos por los del archivo descargado.</li><li>Abrí el archivo registrado, ejecutá el plugin y elegí el mismo entorno que este panel. Generá el código debajo, pegalo en el plugin, guardá el archivo y pulsá verificar.</li></ol>

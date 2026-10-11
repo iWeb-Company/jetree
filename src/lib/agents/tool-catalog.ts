@@ -127,7 +127,7 @@ export function parseToolRequest(toolId: unknown, operation: unknown, rawInput: 
 
 export const TOOL_CONNECTORS = [
   { id: 'plugin-figma-core', name: 'Figma', provider: 'figma' as const, operations: ['list_figma_files', 'get_figma_file', 'get_figma_nodes', 'inspect_figma', 'list_figma_comments', 'post_figma_comment', 'apply_figma_changes', 'get_figma_jobs'], inputs: {
-    list_figma_files: '{} — solo archivos registrados por el usuario; obtené fileKey real primero',
+    list_figma_files: '{} — archivos registrados para escribir; no enumera toda la cuenta. Para leer, aceptá el enlace o fileKey del usuario sin registro previo; Figma verifica sus permisos',
     get_figma_file: '{fileKey,depth?:1..4} — estructura y componentes; profundidad inicial 2',
     get_figma_nodes: '{fileKey,nodeIds:[IDs reales],depth?:1..4} — hasta 10 nodos',
     inspect_figma: '{fileKey,nodeIds:[un ID real],question?} — captura y análisis visual con el modelo de visión del agente',

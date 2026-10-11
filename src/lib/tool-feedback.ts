@@ -5,7 +5,7 @@ export function toolErrorMessage(code: string) {
     case 'FIGMA_PAIR_INVALID': return 'El código de Figma venció o ya fue usado. Generá uno nuevo en Conectores → Figma.';
     case 'FIGMA_PAIR_WAITING': return 'Todavía no aparece la vinculación en el archivo autorizado. Guardá Figma, esperá la sincronización y verificá nuevamente.';
     case 'FIGMA_PAIR_BUSY': return 'Hay una edición en curso en este archivo. Esperá que termine antes de verificar otra vinculación.';
-    case 'FIGMA_FILE_NOT_REGISTERED': return 'Agregá el enlace del archivo en Conectores → Figma antes de usarlo.';
+    case 'FIGMA_FILE_NOT_REGISTERED': return 'Para comentar o editar, agregá el enlace del archivo en Conectores → Figma. Leer y analizar por enlace no requiere registrarlo.';
     case 'FIGMA_FILE_NOT_FOUND': return 'El archivo de Figma no existe o tu token no tiene acceso.';
     case 'FIGMA_EDIT_ACCESS_REQUIRED': return 'Necesitás permiso de edición en este archivo de Figma para preparar cambios.';
     case 'FIGMA_FILE_TYPE_UNSUPPORTED': return 'Esta integración edita archivos de Figma Design. Elegí un archivo de diseño.';

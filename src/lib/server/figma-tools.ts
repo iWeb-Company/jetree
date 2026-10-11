@@ -83,9 +83,12 @@ export async function executeFigmaTool(userId: string, agent: any, operation: Fi
   const service = getServiceSupabase(); const token = await getToolAccessToken(userId, 'figma');
   if (operation === 'list_figma_files') {
     const { data, error } = await service.from('figma_files').select('file_key,name').eq('user_id', userId).order('created_at', { ascending: false }).limit(50);
-    checked(error); return { files: data || [] };
+    checked(error); return { files: data || [], scope: 'Archivos registrados para comentar y editar. Para leer otros archivos, usá su enlace o fileKey: Figma verifica el acceso de tu cuenta. Esta lista no enumera todos tus proyectos.' };
   }
-  const file = String(input.fileKey); await ownedFigmaFile(userId, file);
+  const file = String(input.fileKey);
+  // Reads use the connected account's Figma permissions. Registration remains
+  // mandatory for writes and plugin jobs; a read never enables canvas editing.
+  if (['post_figma_comment', 'apply_figma_changes', 'get_figma_jobs'].includes(operation)) await ownedFigmaFile(userId, file);
   if (operation === 'get_figma_jobs') {
     const { data, error } = await service.from('figma_jobs').select('id,summary,status,result,error_code,created_at,finished_at').eq('user_id', userId).eq('file_key', file).eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(10);
     checked(error); return { jobs: data || [] };

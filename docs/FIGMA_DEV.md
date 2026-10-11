@@ -17,7 +17,8 @@ El merge desencadena el deploy normal. No cambiar la huella de producción.
 
 1. En Figma, Settings → Security → Personal access tokens, crear un token con `current_user:read`, `file_content:read`, `file_comments:read`, `file_comments:write`. Elegir su vencimiento y tener un asiento/permisos que permitan editar los archivos elegidos.
 2. En Jetree dev, Herramientas → Figma, pegar el token únicamente en el campo del panel. Jetree verifica la cuenta y cifra el token en el servidor.
-3. Agregar el enlace `https://www.figma.com/design/CLAVE/Nombre` de cada archivo permitido. Los agentes no pueden usar otros archivos mediante este conector.
+3. Para leer capas, analizar pantallas o consultar comentarios, pasar directamente el enlace `https://www.figma.com/design/CLAVE/Nombre` al agente por web o Telegram. No requiere registro previo ni plugin abierto: Figma verifica el acceso del token conectado. No se enumeran automáticamente todos los proyectos de la cuenta.
+   Para comentar o editar, agregar el enlace en el panel: la lista registrada sigue delimitando las escrituras y las sesiones del plugin. Leer un archivo no lo registra ni habilita escrituras automáticamente.
 4. Habilitar Figma en los conectores del manager o agente que vaya a utilizarlo. Cada usuario conecta su propio token y lista de archivos; la conexión no se copia a otros usuarios.
 
 ## Plugin para modificar el diseño

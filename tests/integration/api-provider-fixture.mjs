@@ -23,6 +23,7 @@ globalThis.fetch = async (input, options) => {
     assert.match(token || '', /^synthetic-figma-[0-9a-f-]{36}$/);
     const owner = token.slice('synthetic-figma-'.length);
     if (url.pathname === '/v1/me') return Response.json({ id: owner, handle: 'Synthetic Figma' });
+    if (url.pathname.split('/')[3] === 'DeniedFile123') return Response.json({err:'Access denied'},{status:403});
     if (url.pathname.startsWith('/v1/images/')) return Response.json({images:{'1:2':'https://s3-alpha.figma.com/synthetic-figma.png'}});
     if (url.pathname.startsWith('/v1/files/')) {
       const fileKey = url.pathname.split('/')[3];
