@@ -65,7 +65,9 @@ globalThis.fetch = async (input, options) => {
   if (!key.startsWith(issuer[0]) || key.endsWith('-invalid')) return Response.json({ error: 'Rejected synthetic key' }, { status: 401 });
   if ((options?.method ?? (input instanceof Request ? input.method : 'GET')) === 'POST') {
     const body = options?.body instanceof FormData ? Object.fromEntries(options.body.entries()) : JSON.parse(options?.body ?? await input.clone().text());
-    if (body.model?.startsWith('images-ci-')) {
+    const imageModel = body.model || decodeURIComponent(/\/models\/([^/]+):generateContent$/.exec(url.pathname)?.[1] || '');
+    if (imageModel.startsWith('images-ci-')) {
+      body.model = imageModel;
       await mkdir('artifacts', { recursive: true });
       const generation = /\/interactions$|\/images(?:\/generations|\/edits)?$/.test(url.pathname);
       const parts = body.contents?.[0]?.parts || body.messages?.[0]?.content || [];
