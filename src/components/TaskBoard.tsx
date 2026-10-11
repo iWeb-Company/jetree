@@ -1,11 +1,13 @@
 'use client';
 
 import React from 'react';
-import { Task, Department } from '@/types';
+import { groupCompletedTasks } from '@/lib/task-groups';
+import { Task, Department, Agent } from '@/types';
 
 interface TaskBoardProps {
   tasks: Task[];
   departments?: Department[];
+  agents?: Agent[];
   selectedDepartmentId?: string;
   onSelectDepartment?: (deptId: string) => void;
   onUpdateStatus?: (taskId: string, newStatus: Task['status']) => void;
@@ -14,6 +16,7 @@ interface TaskBoardProps {
 export default function TaskBoard({
   tasks,
   departments = [],
+  agents = [],
   selectedDepartmentId = 'all',
   onSelectDepartment,
   onUpdateStatus,
@@ -94,6 +97,29 @@ export default function TaskBoard({
                     <div className="h-32 flex items-center justify-center border border-dashed border-cyan-950/40 rounded-lg text-gray-600 text-xs text-center p-4">
                       Sin tareas en esta etapa
                     </div>
+                  ) : col.key === 'completed' ? (
+                    groupCompletedTasks(colTasks).map(group => {
+                      const dept = departments.find(item => item.id === group.departmentId);
+                      return <details key={group.departmentId || 'unassigned'} className="rounded-xl border border-emerald-950/60 bg-[#05070b] p-3">
+                        <summary className="cursor-pointer text-xs font-semibold text-emerald-200">{dept ? `${dept.icon || ''} ${dept.name}` : group.departmentId ? 'Departamento no disponible' : 'Sin departamento'} <span className="text-gray-400">({group.count})</span></summary>
+                        <div className="mt-3 space-y-2">
+                          {group.agents.map(agentGroup => {
+                            const agent = agents.find(item => item.id === agentGroup.agentId);
+                            return <details key={agentGroup.agentId || 'unassigned'} className="rounded-lg border border-gray-800 p-2.5">
+                              <summary className="cursor-pointer text-xs text-gray-200">{agent ? `${agent.avatar || ''} ${agent.name}` : agentGroup.agentId ? 'Agente no disponible' : 'Sin agente asignado'} <span className="text-gray-500">({agentGroup.tasks.length})</span></summary>
+                              <div className="mt-2 space-y-2">{agentGroup.tasks.map(task => <details key={task.id} className="rounded-lg border border-gray-800 p-2.5">
+                                <summary className="cursor-pointer text-xs text-gray-100">{task.title}{task.sourceChannel === 'telegram' && <span className="ml-2 text-[10px] text-blue-300">Telegram</span>}</summary>
+                                <div className="mt-2 space-y-2 text-xs text-gray-400">
+                                  {task.description && <p className="whitespace-pre-wrap break-words">{task.description}</p>}
+                                  {task.result && <p className="whitespace-pre-wrap break-words">{task.result}</p>}
+                                  {onUpdateStatus && <button onClick={() => onUpdateStatus(task.id, 'pending')} className="rounded bg-gray-900 px-2 py-1 text-gray-200">Reabrir</button>}
+                                </div>
+                              </details>)}</div>
+                            </details>;
+                          })}
+                        </div>
+                      </details>;
+                    })
                   ) : (
                     colTasks.map(task => {
                       const dept = departments.find(d => d.id === task.departmentId);

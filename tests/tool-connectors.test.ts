@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { assertToolConnectionConnected, assertToolEnabled, parseToolRequest, TOOL_CONNECTORS } from '../src/lib/agents/tool-catalog';
 
-test('only implemented GitHub and Drive connectors are advertised as executable', () => {
-  assert.deepEqual(TOOL_CONNECTORS.map(item => item.id), ['plugin-github-core', 'plugin-google-drive-core']);
+test('only implemented connectors are advertised as executable', () => {
+  assert.deepEqual(TOOL_CONNECTORS.map(item => item.id), ['plugin-gmail-core', 'plugin-web-search', 'plugin-github-core', 'plugin-google-drive-core']);
 });
 
 test('GitHub reads are bounded and classified as non-writing', () => {

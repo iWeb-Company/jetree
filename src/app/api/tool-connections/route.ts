@@ -22,11 +22,11 @@ export async function DELETE(request: Request) {
   try {
     const { user } = await requireUser(request);
     const provider = new URL(request.url).searchParams.get('provider');
-    if (provider !== 'github' && provider !== 'google_drive') return NextResponse.json({ error: 'Conector inválido.' }, { status: 400 });
+    if (provider !== 'github' && provider !== 'google_drive' && provider !== 'gmail') return NextResponse.json({ error: 'Conector inválido.' }, { status: 400 });
     let remoteRevoked = false;
     try {
       const token = await getToolAccessToken(user.id, provider as ToolProvider);
-      if (provider === 'google_drive') {
+      if (provider === 'google_drive' || provider === 'gmail') {
         const response = await fetch('https://oauth2.googleapis.com/revoke', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token }), signal: AbortSignal.timeout(8_000) });
         remoteRevoked = response.ok;
       } else {
@@ -46,6 +46,11 @@ export async function DELETE(request: Request) {
     const service = getServiceSupabase();
     const { error } = await service.from('tool_connections').delete().eq('user_id', user.id).eq('provider', provider);
     if (error) return NextResponse.json({ error: 'No se pudo eliminar la conexión local.' }, { status: 500 });
+    // Google revocation can revoke the other grant for the same OAuth client.
+    if (remoteRevoked && provider !== 'github') {
+      await service.from('tool_connections').update({ status: 'expired', updated_at: new Date().toISOString() })
+        .eq('user_id', user.id).eq('provider', provider === 'gmail' ? 'google_drive' : 'gmail');
+    }
     await service.from('tool_connection_audit').insert({ user_id: user.id, provider, action: 'revoked' });
     return NextResponse.json({ ok: true, remoteRevoked });
   } catch {

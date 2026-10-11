@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { googleToolScopeGranted } from '@/lib/google-tool-scopes';
 import { getServiceSupabase } from '@/lib/server/auth';
 import { decryptProviderSecret, encryptProviderSecret } from '@/lib/server/provider-secrets';
 import type { ToolProvider } from '@/lib/agents/tool-catalog';
@@ -61,9 +62,9 @@ export async function storeToolConnection(userId: string, provider: ToolProvider
   if (!credentials.access_token || credentials.access_token.length > 8192) throw new Error('TOOL_OAUTH_TOKEN_INVALID');
   if (!credentials.refresh_token) {
     const service = getServiceSupabase();
-    const { data: existing } = await service.from('tool_connections').select('ciphertext, iv, auth_tag')
+    const { data: existing } = await service.from('tool_connections').select('ciphertext, iv, auth_tag, account_label')
       .eq('user_id', userId).eq('provider', provider).maybeSingle();
-    if (existing) {
+    if (existing && accountLabel && existing.account_label === accountLabel) {
       try {
         const prior = JSON.parse(decryptProviderSecret(existing)) as OAuthCredentials;
         credentials = { ...credentials, refresh_token: prior.refresh_token };
@@ -91,7 +92,7 @@ export async function getToolAccessToken(userId: string, provider: ToolProvider)
   if (!data) throw new Error('TOOL_CONNECTION_REQUIRED');
   assertToolConnectionConnected(data.status);
   const credentials = JSON.parse(decryptProviderSecret(data)) as OAuthCredentials;
-  if (provider === 'google_drive' && data.expires_at && Date.parse(data.expires_at) < Date.now() + 60_000) {
+  if ((provider === 'google_drive' || provider === 'gmail') && data.expires_at && Date.parse(data.expires_at) < Date.now() + 60_000) {
     if (!credentials.refresh_token || !process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
       await service.from('tool_connections').update({ status: 'expired' }).eq('user_id', userId).eq('provider', provider);
       await service.from('tool_connection_audit').insert({ user_id: userId, provider, action: 'refresh_failed' });
@@ -109,6 +110,7 @@ export async function getToolAccessToken(userId: string, provider: ToolProvider)
     }
     const refreshed = await response.json() as { access_token?: string; expires_in?: number; scope?: string };
     if (!refreshed.access_token || !refreshed.expires_in) throw new Error('TOOL_PROVIDER_FAILED');
+    if (!googleToolScopeGranted(provider, refreshed.scope || credentials.scope)) throw new Error('TOOL_PROVIDER_AUTH_FAILED');
     const updated = { ...credentials, access_token: refreshed.access_token, expires_at: Date.now() + refreshed.expires_in * 1000, scope: refreshed.scope || credentials.scope };
     await storeToolConnection(userId, provider, updated, data.account_label || null);
     return updated.access_token;

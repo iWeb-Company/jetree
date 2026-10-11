@@ -13,7 +13,7 @@ function statusFor(code: string) {
   if (code === 'TOOL_CONNECTION_REQUIRED' || code === 'TOOL_CONNECTION_EXPIRED') return 409;
   if (code === 'TOOL_INPUT_INVALID' || code === 'TOOL_NOT_SUPPORTED') return 400;
   if (code === 'TOOL_APPROVAL_NOT_PENDING') return 409;
-  if (code === 'SERVER_CONFIGURATION_ERROR') return 503;
+  if (code === 'SERVER_CONFIGURATION_ERROR' || code === 'TOOL_SEARCH_NOT_CONFIGURED') return 503;
   if (code.startsWith('TOOL_PROVIDER_') || code === 'TOOL_OPERATION_FAILED' || code === 'TOOL_FILE_TYPE_UNSUPPORTED') return 502;
   return 500;
 }
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     if (connections.error || approvals.error || calls.error) return NextResponse.json({ error: 'No se pudo cargar el estado de herramientas.' }, { status: 500 });
     const github = connections.data?.find(item => item.provider === 'github' && item.status === 'connected');
     const githubAccess = github ? await getGithubConnectionAccess(user.id) : 'public';
-    return NextResponse.json({ connections: (connections.data || []).map(item => item.provider === 'github' ? { ...item, githubAccess } : item), pendingApprovals: approvals.data || [], calls: calls.data || [] }, { headers: { 'Cache-Control': 'private, no-store' } });
+    return NextResponse.json({ searchReady: Boolean(process.env.TAVILY_API_KEY), connections: (connections.data || []).map(item => item.provider === 'github' ? { ...item, githubAccess } : item), pendingApprovals: approvals.data || [], calls: calls.data || [] }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch {
     return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
   }

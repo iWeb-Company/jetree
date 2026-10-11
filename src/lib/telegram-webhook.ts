@@ -10,6 +10,8 @@ export function extractTelegramTextUpdate(body: unknown): {
   updateId: number;
   chatId: number;
   senderName: string;
+  senderUserId?: number;
+  chatType?: string;
   text: string;
   audio?: { fileId: string; mimeType: string; duration: number; size?: number };
 } | null {
@@ -26,6 +28,8 @@ export function extractTelegramTextUpdate(body: unknown): {
     updateId: update.update_id,
     chatId: message.chat.id,
     senderName: String(message.from?.username || message.from?.first_name || 'Usuario').slice(0, 120),
+    ...(Number.isSafeInteger(message.from?.id) && !message.from?.is_bot ? { senderUserId: message.from.id } : {}),
+    ...(typeof message.chat.type === 'string' ? { chatType: message.chat.type } : {}),
     text,
     ...(audio ? { audio } : {}),
   };

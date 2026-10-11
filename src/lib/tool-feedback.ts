@@ -2,6 +2,7 @@ import type { ChatMessage } from '@/types';
 
 export function toolErrorMessage(code: string) {
   switch (code) {
+    case 'TOOL_SEARCH_NOT_CONFIGURED': return 'La búsqueda en internet todavía no está configurada. Contactá al administrador.';
     case 'TOOL_GITHUB_PRIVATE_ACCESS_REQUIRED': return 'Este repositorio requiere acceso privado. En Conectores de herramientas, ampliá el permiso de GitHub y autorizalo en GitHub.';
     case 'TOOL_CONNECTION_REQUIRED': return 'Conectá nuevamente el proveedor en Conectores de herramientas para continuar.';
     case 'TOOL_CONNECTION_EXPIRED':

@@ -27,8 +27,8 @@ try {
     users.push({ ...user, email, password, token: db(await client.auth.signInWithPassword({ email, password })).session.access_token });
   }
   const own = users[0]; const other = users[1];
-  const prefixes = ['AIzaSynthetic-', 'sk-ant-api03-synthetic-', 'sk-proj-synthetic-', 'sk-or-v1-synthetic-', 'sk-synthetic-deepseek-'];
-  const providers = ['gemini', 'claude', 'openai', 'custom', 'deepseek'];
+  const prefixes = ['AIzaSynthetic-', 'sk-ant-api03-synthetic-', 'sk-proj-synthetic-', 'sk-or-v1-synthetic-', 'sk-synthetic-deepseek-', 'gsk_synthetic-'];
+  const providers = ['gemini', 'claude', 'openai', 'custom', 'deepseek', 'groq'];
   const connections = [];
   for (let i = 0; i < prefixes.length; i++) {
     const key = prefixes[i] + randomBytes(12).toString('hex');
@@ -43,13 +43,13 @@ try {
     const saved = await api(own, '/api/provider-connections', 'POST', { apiKey: 'AIzaSynthetic-' + randomBytes(12).toString('hex') });
     assert.equal(saved.status, 200); connections.push(saved.body.connection);
   }
-  assert.equal((await api(own, '/api/provider-connections')).body.connections.length, 7);
+  assert.equal((await api(own, '/api/provider-connections')).body.connections.length, 8);
   assert.equal((await api(other, '/api/provider-connections')).body.connections.length, 0);
-  const second = connections[5];
+  const second = connections[6];
   assert.equal((await api(other, '/api/provider-connections', 'POST', { action: 'select', connectionId: second.id })).status, 404);
   assert.equal((await api(other, '/api/provider-connections', 'POST', { action: 'validate', connectionId: second.id })).status, 404);
   await api(other, '/api/provider-connections?id=' + second.id, 'DELETE');
-  assert.equal((await api(own, '/api/provider-connections')).body.connections.length, 7);
+  assert.equal((await api(own, '/api/provider-connections')).body.connections.length, 8);
   assert.equal((await api(other, '/api/provider-models?provider=gemini&connectionId=' + second.id)).status, 409);
   assert.equal((await api(own, '/api/provider-connections', 'POST', { action: 'select', connectionId: second.id })).status, 200);
   const selected = (await api(own, '/api/provider-connections')).body.connections.filter(c => c.provider === 'gemini' && c.metadata.is_default);
@@ -57,11 +57,11 @@ try {
   assert.equal((await api(own, '/api/provider-connections', 'POST', { apiKey: 'sk-proj-synthetic-invalid' })).status, 422);
   assert.equal((await api(own, '/api/provider-connections', 'POST', { apiKey: 'not-an-api-key' })).status, 422);
   assert.equal((await api(own, '/api/provider-connections', 'POST', { apiKey: 'x'.repeat(9000) })).status, 413);
-  assert.equal((await api(own, '/api/provider-connections')).body.connections.length, 7);
+  assert.equal((await api(own, '/api/provider-connections')).body.connections.length, 8);
   await api(own, '/api/provider-connections?id=' + second.id, 'DELETE');
   assert.equal((await api(own, '/api/provider-models?provider=gemini')).status, 409, 'No fallback after selected key deletion');
   assert.equal((await api(own, '/api/provider-connections', 'POST', { action: 'select', connectionId: connections[0].id })).status, 200);
-  console.log('PASS five providers, repeated keys, encryption, explicit selection, invalid inputs and cross-user isolation');
+  console.log('PASS six providers, repeated keys, encryption, explicit selection, invalid inputs and cross-user isolation');
 
   const department = db(await service.from('departments').insert({ name: 'API test', created_by: own.id }).select('id').single());
   const agent = db(await service.from('agents').insert({ department_id: department.id, created_by: own.id, name: 'DeepSeek test', provider: 'deepseek', model: 'synthetic-deepseek' }).select('id').single());
@@ -70,6 +70,10 @@ try {
   assert.equal((await api(own, '/api/agents/chat', 'POST', { agentId: agent.id, message: 'test', modelSource: 'local' })).status, 410);
   for (const path of ['/api/model-devices/relay', '/api/mcp-oauth/token', '/mcp']) assert.equal((await api(own, path, 'POST', {})).status, 410);
   console.log('PASS DeepSeek chat adapter and server-side subscription retirement');
+  db(await service.from('agents').update({ provider: 'groq', model: 'synthetic-groq' }).eq('id', agent.id));
+  const groqChat = await api(own, '/api/agents/chat', 'POST', { agentId: agent.id, message: 'Groq synthetic test' });
+  assert.equal(groqChat.status, 200); assert.match(groqChat.body.reply, /Synthetic Groq API OK/);
+  console.log('PASS Groq authenticated catalog, encrypted key and chat');
 
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext(); const page = await context.newPage();

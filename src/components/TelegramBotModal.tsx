@@ -21,12 +21,44 @@ export default function TelegramBotModal({
   const [botUsername, setBotUsername] = useState(agent?.telegramBot?.botUsername || '');
   const [statusMsg, setStatusMsg] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [pairCommand, setPairCommand] = useState('');
+  const [toolChatLinked, setToolChatLinked] = useState(false);
+  const [canLinkTools, setCanLinkTools] = useState(false);
 
   useEffect(() => {
     setBotToken('');
     setBotUsername(agent?.telegramBot?.botUsername || '');
     setStatusMsg('');
+    setPairCommand('');
+    setToolChatLinked(false);
+    setCanLinkTools(false);
   }, [agent?.id, agent?.telegramBot?.botUsername]);
+
+  useEffect(() => {
+    if (!isOpen || !agent) { setPairCommand(''); return; }
+    let active = true;
+    void (async () => {
+      const { data } = await supabase.auth.getSession();
+      const res = await fetch(`/api/agents/${agent.id}/telegram`, { headers: { Authorization: `Bearer ${data.session?.access_token || ''}` } });
+      const payload = await res.json();
+      if (active && res.ok) { setToolChatLinked(Boolean(payload.telegramBot?.toolChatLinked)); setCanLinkTools(Boolean(payload.telegramBot?.canLinkTools)); }
+    })().catch(() => {});
+    return () => { active = false; };
+  }, [isOpen, agent]);
+
+  const handleToolChat = async (action: 'link_tools' | 'unlink_tools') => {
+    if (!agent) return;
+    setIsVerifying(true); setPairCommand('');
+    try {
+      const { data } = await supabase.auth.getSession();
+      const res = await fetch(`/api/agents/${agent.id}/telegram`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` }, body: JSON.stringify({ action }) });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload.error || 'No se pudo autorizar el chat.');
+      if (action === 'link_tools') { setPairCommand(payload.command); setStatusMsg('Mandá el comando al bot en tu chat privado. Vence en 10 minutos y sirve una sola vez.'); }
+      else { setToolChatLinked(false); setStatusMsg('Acceso a herramientas desde Telegram revocado.'); }
+    } catch (err: any) { setStatusMsg(`❌ ${err.message || 'No se pudo autorizar el chat.'}`); }
+    finally { setIsVerifying(false); }
+  };
 
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/webhook/telegram/${agent?.id || ''}`
@@ -56,6 +88,9 @@ export default function TelegramBotModal({
       setBotToken('');
       setStatusMsg('✅ Bot conectado y webhook protegido registrado.');
       onSaveBotConfig(agent.id, username);
+      setCanLinkTools(true);
+      setToolChatLinked(false);
+      setPairCommand('');
     } catch (err: any) {
       setStatusMsg(`❌ ${err.message || 'No se pudo conectar el bot.'}`);
     } finally {
@@ -182,6 +217,17 @@ export default function TelegramBotModal({
         </div>
 
         {/* Feedback / Status */}
+        {agent.telegramBot?.isActive && <section className="p-4 rounded-xl border border-cyan-900/60 bg-cyan-950/20 space-y-3 text-xs text-gray-300">
+          <h4 className="font-semibold text-white">Herramientas y aprobaciones por Telegram</h4>
+          <p>Vinculá tu chat privado para usar las herramientas habilitadas del agente. Cada envío, respuesta o cambio mostrará su detalle y botones para aprobar o rechazar en Telegram.</p>
+          <p>{toolChatLinked ? 'Chat autorizado. Podés aprobar acciones desde Telegram.' : 'Sin chat autorizado para herramientas.'}</p>
+          {canLinkTools && <div className="flex flex-wrap gap-2">
+            <button type="button" disabled={isVerifying} onClick={() => handleToolChat('link_tools')} className="px-3 py-2 bg-cyan-500 text-black rounded-lg font-semibold">{toolChatLinked ? 'Vincular otro chat' : 'Vincular mi chat para herramientas'}</button>
+            {toolChatLinked && <button type="button" disabled={isVerifying} onClick={() => handleToolChat('unlink_tools')} className="px-3 py-2 bg-gray-800 rounded-lg">Revocar acceso del chat</button>}
+          </div>}
+          {!canLinkTools && <p>La vinculación la administra el propietario del bot.</p>}
+          {pairCommand && <div className="space-y-2"><p>No compartas este comando: autoriza tu cuenta de Telegram para acceder a las herramientas conectadas en Jetree.</p><code className="block break-all p-3 rounded-lg bg-black text-cyan-300 select-all">{pairCommand}</code></div>}
+        </section>}
         {statusMsg && (
           <div className="p-3 bg-cyan-950/30 border border-cyan-900/60 rounded-xl text-xs text-gray-200">
             {statusMsg}

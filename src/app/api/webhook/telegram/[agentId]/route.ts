@@ -2,6 +2,7 @@ import { after, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/server/auth';
 import { extractTelegramTextUpdate, verifyTelegramSecret } from '@/lib/telegram-webhook';
 import { runTelegramQueue } from '@/lib/server/telegram-queue';
+import { extractTelegramToolEvent } from '@/lib/telegram-tool-consent';
 
 export const runtime = 'nodejs';
 export const maxDuration = 240;
@@ -24,12 +25,15 @@ export async function POST(request: Request, { params: promisedParams }: { param
     if (Buffer.byteLength(rawBody, 'utf8') > 64_000) return NextResponse.json({ error: 'Payload too large.' }, { status: 413 });
     body = JSON.parse(rawBody);
   } catch { return NextResponse.json({ error: 'Invalid JSON.' }, { status: 400 }); }
-  const parsed = extractTelegramTextUpdate(body);
+  const toolEvent = extractTelegramToolEvent(body);
+  const parsed = toolEvent ? { ...toolEvent, senderName: 'Usuario', text: '[Consentimiento de herramientas de Telegram]', senderUserId: toolEvent.senderUserId } : extractTelegramTextUpdate(body);
   if (!parsed) return NextResponse.json({ ok: true, ignored: true });
   const { error: insertError } = await service.from('telegram_updates').upsert({
     bot_id: bot.id, agent_id: params.agentId, update_id: parsed.updateId, chat_id: parsed.chatId,
     sender_name: parsed.senderName, message_text: parsed.text, status: 'pending',
-    ...(parsed.audio ? { audio_file: parsed.audio } : {}),
+    sender_user_id: parsed.senderUserId || null, chat_type: parsed.chatType || null,
+    ...(toolEvent ? { tool_event: toolEvent.event } : {}),
+    ...('audio' in parsed && parsed.audio ? { audio_file: parsed.audio } : {}),
   }, { onConflict: 'bot_id,update_id', ignoreDuplicates: true });
   if (insertError) return NextResponse.json({ error: 'Could not enqueue update.' }, { status: 503 });
   after(async () => { await runTelegramQueue(bot.id).catch(() => {}); });

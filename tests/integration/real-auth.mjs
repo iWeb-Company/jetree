@@ -146,11 +146,12 @@ try {
   assert.equal((await api(users[0], '/api/agents', 'PATCH', { id: agents[0], action: 'restore' })).status, 200);
   const history = await api(users[0], `/api/conversations?agentId=${agents[0]}`); assert.equal(history.body.messages.length, 1);
   pass('archive/restore preserves conversation');
-  for (const provider of ['github', 'google_drive']) {
+  for (const provider of ['github', 'google_drive', 'gmail']) {
     const initiated = await api(users[0], `/api/tool-connections/oauth?provider=${provider}${provider === 'github' ? '&githubAccess=public' : ''}`);
     assert.equal(initiated.status, 200, `OAuth ${provider} configured`);
     const authorization = new URL(initiated.body.authorizationUrl);
     if (provider === 'github') assert.equal(authorization.searchParams.get('scope'), 'read:user public_repo');
+    if (provider === 'gmail') assert.equal(authorization.searchParams.get('scope'), 'openid email profile https://www.googleapis.com/auth/gmail.modify');
     assert.equal(authorization.searchParams.get('redirect_uri'), origin + '/api/tool-connections/oauth/callback');
     const state = authorization.searchParams.get('state'); assert.ok(state);
     const denied = await fetch(origin + '/api/tool-connections/oauth/callback?' + new URLSearchParams({ state, error: 'access_denied' }), { redirect: 'manual' });
