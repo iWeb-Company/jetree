@@ -14,15 +14,20 @@ export function extractTelegramTextUpdate(body: unknown): {
   chatType?: string;
   text: string;
   audio?: { fileId: string; mimeType: string; duration: number; size?: number };
+  image?: { fileId: string; size?: number };
 } | null {
   if (!body || typeof body !== 'object') return null;
   const update = body as Record<string, any>;
   const message = update.message || update.edited_message;
   if (!Number.isSafeInteger(update.update_id) || !message || !Number.isSafeInteger(message.chat?.id)) return null;
   const media = message.voice || message.audio;
+  const photo = Array.isArray(message.photo) ? [...message.photo].filter(item => Number.isFinite(item.width) && Number.isFinite(item.height)).sort((a, b) => b.width * b.height - a.width * a.height)[0] : null;
+  const imageMedia = photo || (/^image\/(?:jpeg|png|webp)$/.test(message.document?.mime_type || '') ? message.document : null);
+  const image = imageMedia && typeof imageMedia.file_id === 'string' && /^[\w-]{1,512}$/.test(imageMedia.file_id)
+    ? { fileId: imageMedia.file_id, ...(imageMedia.file_size !== undefined ? { size: Number(imageMedia.file_size) } : {}) } : undefined;
   const audio = media && typeof media.file_id === 'string' && /^[\w-]{1,512}$/.test(media.file_id)
     ? { fileId: media.file_id, mimeType: message.voice ? 'audio/ogg' : String(media.mime_type || 'audio/mpeg'), duration: Number(media.duration), ...(media.file_size !== undefined ? { size: Number(media.file_size) } : {}) } : undefined;
-  const text = typeof message.text === 'string' ? message.text.trim() : audio ? (typeof message.caption === 'string' ? message.caption.trim() : '') || '[Audio de Telegram]' : '';
+  const text = typeof message.text === 'string' ? message.text.trim() : audio || image ? (typeof message.caption === 'string' ? message.caption.trim() : '') || (image ? 'Describí esta imagen.' : '[Audio de Telegram]') : '';
   if (!text || text.length > 8000) return null;
   return {
     updateId: update.update_id,
@@ -32,5 +37,6 @@ export function extractTelegramTextUpdate(body: unknown): {
     ...(typeof message.chat.type === 'string' ? { chatType: message.chat.type } : {}),
     text,
     ...(audio ? { audio } : {}),
+    ...(image ? { image } : {}),
   };
 }

@@ -37,6 +37,9 @@ export type Agent = {
   roleType: AgentRoleType;         // 'independent' o 'manager'
   subordinateIds?: string[];       // Si es manager, IDs de los agentes a su cargo
   provider: AIProvider;
+  visionModel?: string;
+  imageProvider?: AIProvider;
+  imageModel?: string;
   model: string;                   // 'gpt-4o', 'gemini-2.5-flash', 'claude-3-5-sonnet-20241022', etc.
   systemPrompt: string;
   telegramBot?: TelegramBotConfig; // Configuración de Bot de Telegram individual
@@ -87,6 +90,7 @@ export type AgentActivityLog = {
 };
 
 export type ChatMessage = {
+  images?: Array<{ id: string; kind: 'received' | 'generated'; mimeType: string }>;
   id: string;
   agentId: string;
   role: 'user' | 'assistant' | 'system';
