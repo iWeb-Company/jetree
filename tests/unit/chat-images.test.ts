@@ -46,6 +46,7 @@ test('Google, OpenAI and OpenRouter generate binary images through their documen
       assert.equal(options?.redirect, 'error');
       if (provider === 'gemini') {
         assert.match(String(url), /v1beta\/interactions$/); assert.equal(body.store, false);
+        assert.deepEqual(body.response_format, { type: 'image', mime_type: 'image/jpeg', delivery: 'inline' });
         return Response.json({ steps: [{ type: 'thought', content: [{ type: 'image', data: 'ignored' }] }, { type: 'model_output', content: [{ type: 'image', data: image.bytes.toString('base64'), mime_type: image.mimeType }] }] });
       }
       assert.match(String(url), provider === 'custom' ? /api\/v1\/images$/ : /v1\/images\/generations$/);

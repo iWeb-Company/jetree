@@ -70,6 +70,7 @@ globalThis.fetch = async (input, options) => {
       body.model = imageModel;
       await mkdir('artifacts', { recursive: true });
       const generation = /\/interactions$|\/images(?:\/generations|\/edits)?$/.test(url.pathname);
+      if (generation && issuer[1] === 'gemini') assert.deepEqual(body.response_format, { type: 'image', mime_type: 'image/jpeg', delivery: 'inline' }, 'Google only supports JPEG image output format');
       const parts = body.contents?.[0]?.parts || body.messages?.[0]?.content || [];
       const prompt = typeof parts === 'string' ? parts : parts.filter(part => part.type === 'text' || part.text).map(part => part.text).join('\n');
       await appendFile('artifacts/image-fixture-events.jsonl', JSON.stringify({ operation: generation ? 'generate' : 'vision', provider: issuer[1], model: body.model, references: generation ? body.input?.filter?.(item => item.type === 'image').length || body.input_references?.length || (body['image[]'] ? 1 : 0) : parts.filter(part => part.type === 'image' || part.type === 'image_url' || part.inlineData).length }) + '\n');

@@ -63,7 +63,7 @@ function decodeImage(data: unknown, mimeType: unknown): ImageInput {
 export async function generateImage(provider: AIProvider, model: string, prompt: string, key: string, images: ImageInput[] = [], fetcher: typeof fetch = fetch): Promise<ImageInput> {
   if (!key) throw new Error('IMAGE_CREDENTIAL_REQUIRED');
   if (provider === 'gemini') {
-    const result = await request('https://generativelanguage.googleapis.com/v1beta/interactions', { 'Content-Type': 'application/json', 'x-goog-api-key': key }, JSON.stringify({ model, store: false, input: [{ type: 'text', text: prompt }, ...images.map(image => ({ type: 'image', mime_type: image.mimeType, data: image.bytes.toString('base64') }))], response_format: { type: 'image', mime_type: 'image/png' } }), fetcher, 150_000);
+    const result = await request('https://generativelanguage.googleapis.com/v1beta/interactions', { 'Content-Type': 'application/json', 'x-goog-api-key': key }, JSON.stringify({ model, store: false, input: [{ type: 'text', text: prompt }, ...images.map(image => ({ type: 'image', mime_type: image.mimeType, data: image.bytes.toString('base64') }))], response_format: { type: 'image', mime_type: 'image/jpeg', delivery: 'inline' } }), fetcher, 150_000);
     const image = result?.steps?.filter((step: any) => step.type === 'model_output').flatMap((step: any) => step.content || []).find((part: any) => part.type === 'image');
     if (!image) throw new Error('IMAGE_GENERATION_EMPTY');
     return decodeImage(image.data, image.mime_type);
