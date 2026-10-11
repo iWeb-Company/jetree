@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     const { data: rows, error: messagesError } = await client
       .from('messages')
-      .select('id, role, content, delegation, created_at')
+      .select('id, role, content, delegation, created_at, chat_images(id,kind,mime_type)')
       .eq('conversation_id', conversation.id)
       .order('created_at', { ascending: false })
       .limit(100);
@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       content: row.content,
       timestamp: row.created_at,
       delegation: row.delegation,
+      images: (row.chat_images || []).map((image: any) => ({ id: image.id, kind: image.kind, mimeType: image.mime_type })),
     }));
 
     return NextResponse.json({ conversation, messages });

@@ -11,6 +11,8 @@ const cases = [
   ['GET', '/api/tasks', 401],
   ['POST', '/api/tasks', 401],
   ['GET', '/api/conversations', 401],
+  ['GET', '/api/chat-images?id=synthetic', 401],
+  ['POST', '/api/chat-images?agentId=synthetic', 401],
   ['GET', '/api/provider-connections', 401],
   ['POST', '/api/provider-connections', 401],
   ['GET', '/api/tool-connections', 401],

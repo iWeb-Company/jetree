@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/server/auth';
+import { IMAGE_PROVIDERS, validImageModel } from '@/lib/chat-images';
+
+function validImageSettings(body: any) {
+  return validImageModel(body.vision_model) && validImageModel(body.image_model) && (body.image_provider == null || IMAGE_PROVIDERS.includes(body.image_provider));
+}
 
 export async function GET(request: Request) {
   try {
@@ -40,7 +45,8 @@ export async function POST(request: Request) {
   try {
     const { client, user } = await requireUser(request);
     const body = await request.json();
-    const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar'];
+    if (!validImageSettings(body)) return NextResponse.json({ error: 'Configuración de imágenes inválida.' }, { status: 400 });
+    const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar', 'vision_model', 'image_provider', 'image_model'];
     const payload = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)));
     if (!payload.department_id || typeof payload.name !== 'string' || !payload.name.trim() || !payload.provider || typeof payload.model !== 'string' || !payload.model.trim()) {
       return NextResponse.json({ error: 'department_id, name, provider y model son obligatorios' }, { status: 400 });
@@ -68,7 +74,8 @@ export async function PATCH(request: Request) {
       if (!data) return NextResponse.json({ error: 'Agente no encontrado o sin permisos.' }, { status: 404 });
       return NextResponse.json({ agent: data });
     }
-    const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar', 'status'];
+    if (!validImageSettings(body)) return NextResponse.json({ error: 'Configuración de imágenes inválida.' }, { status: 400 });
+    const allowed = ['department_id', 'name', 'description', 'role_type', 'provider', 'model', 'system_prompt', 'subordinate_ids', 'enabled_tool_ids', 'avatar', 'status', 'vision_model', 'image_provider', 'image_model'];
     const payload = Object.fromEntries(Object.entries(body).filter(([key]) => allowed.includes(key)));
     delete (payload as any).id;
     const { data, error } = await client.from('agents').update({ ...payload, updated_at: new Date().toISOString() })

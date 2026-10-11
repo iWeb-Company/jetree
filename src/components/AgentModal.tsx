@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Agent, Department, AgentRoleType, AIProvider, UserSubscription } from '@/types';
 import { ALL_CHATGPT_WORK_PLUGINS, PLUGIN_CATEGORIES, PluginCategory } from '@/lib/agents/plugins';
 import { supabase } from '@/lib/supabase';
+import { IMAGE_MODELS, imageAdvice } from '@/lib/chat-images';
 
 interface AgentModalProps {
   isOpen: boolean;
@@ -32,6 +33,9 @@ export default function AgentModal({
   const [roleType, setRoleType] = useState<AgentRoleType>(agentToEdit?.roleType || 'independent');
   const [provider, setProvider] = useState<AIProvider>(agentToEdit?.provider || 'gemini');
   const [model, setModel] = useState(agentToEdit?.model || 'gemini-3.5-flash-lite');
+  const [visionModel, setVisionModel] = useState(agentToEdit?.visionModel || '');
+  const [imageProvider, setImageProvider] = useState<AIProvider | ''>(agentToEdit?.imageProvider || '');
+  const [imageModel, setImageModel] = useState(agentToEdit?.imageModel || '');
   const [systemPrompt, setSystemPrompt] = useState(
     agentToEdit?.systemPrompt || 'Eres un asistente especialista en...'
   );
@@ -81,6 +85,7 @@ export default function AgentModal({
     setRoleType(agentToEdit?.roleType || 'independent');
     setProvider(agentToEdit?.provider || 'gemini');
     setModel(agentToEdit?.model || 'gemini-3.5-flash-lite');
+    setVisionModel(agentToEdit?.visionModel || ''); setImageProvider(agentToEdit?.imageProvider || ''); setImageModel(agentToEdit?.imageModel || '');
     setSystemPrompt(agentToEdit?.systemPrompt || 'Eres un asistente especialista en...');
     setAvatar(agentToEdit?.avatar || (agentToEdit?.roleType === 'manager' ? '👨‍💼' : '🤖'));
     setSelectedSubordinates(agentToEdit?.subordinateIds || []);
@@ -187,6 +192,9 @@ export default function AgentModal({
       subordinateIds: roleType === 'manager' ? selectedSubordinates : undefined,
       provider,
       model,
+      visionModel: visionModel.trim() || undefined,
+      imageProvider: imageProvider || undefined,
+      imageModel: imageModel.trim() || undefined,
       systemPrompt: systemPrompt.trim(),
       enabledPluginIds,
       telegramBot: agentToEdit?.telegramBot,
@@ -437,6 +445,24 @@ export default function AgentModal({
               </div>
 
               {/* System Prompt */}
+              <fieldset className="space-y-3 rounded-xl border border-cyan-900 bg-cyan-950/10 p-3">
+                <legend className="px-1 text-sm font-semibold text-cyan-200">Imágenes · web y Telegram</legend>
+                <label className="block text-xs text-gray-300">Modelo para leer imágenes (opcional)
+                  <input aria-label="Modelo para leer imágenes" value={visionModel} onChange={event => setVisionModel(event.target.value)} list="vision-model-suggestions" maxLength={180} placeholder={`Usar ${model}`} className="mt-1 w-full rounded-lg border border-cyan-950 bg-[#05070b] p-2 text-white" />
+                  <datalist id="vision-model-suggestions">{IMAGE_MODELS.vision[provider].map(value => <option key={value} value={value} />)}</datalist>
+                </label>
+                <p className="text-[11px] text-gray-400">{imageAdvice('vision', provider)}</p>
+                <label className="block text-xs text-gray-300">API para generar imágenes
+                  <select aria-label="API para generar imágenes" value={imageProvider} onChange={event => { setImageProvider(event.target.value as AIProvider | ''); setImageModel(''); }} className="mt-1 w-full rounded-lg border border-cyan-950 bg-[#05070b] p-2 text-white">
+                    <option value="">Mismo proveedor del agente</option><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option><option value="custom">OpenRouter</option>
+                  </select>
+                </label>
+                <label className="block text-xs text-gray-300">Modelo para generar imágenes (opcional)
+                  <input aria-label="Modelo para generar imágenes" value={imageModel} onChange={event => setImageModel(event.target.value)} list="image-model-suggestions" maxLength={180} placeholder={IMAGE_MODELS.generation[imageProvider || provider][0] || 'Elegí Google, OpenAI u OpenRouter'} className="mt-1 w-full rounded-lg border border-cyan-950 bg-[#05070b] p-2 text-white" />
+                  <datalist id="image-model-suggestions">{IMAGE_MODELS.generation[imageProvider || provider].map(value => <option key={value} value={value} />)}</datalist>
+                </label>
+                <p className="text-[11px] text-gray-400">{imageAdvice('generation', imageProvider || provider)} Se usa tu clave seleccionada en Conexiones IA. Podés pedir «Generá una imagen de…» o usar /imagen en Telegram.</p>
+              </fieldset>
               <div>
                 <label className="block text-xs font-semibold text-gray-300 uppercase tracking-wider mb-1.5">
                   Instrucciones del Sistema (System Prompt)

@@ -6,6 +6,7 @@ assert.equal(process.env.CI, 'true');
 assert.equal(new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname, '127.0.0.1');
 const realFetch = globalThis.fetch;
 const failedDeliveries = new Set();
+const syntheticImage = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64');
 const issuers = new Map([
   ['api.openai.com', ['sk-proj-synthetic-', 'openai']],
   ['api.groq.com', ['gsk_synthetic-', 'groq']],
@@ -41,12 +42,14 @@ globalThis.fetch = async (input, options) => {
   if (url.hostname === 'api.telegram.org') {
     assert.ok(url.pathname.includes('botsynthetic-audio-token/'), 'Fixture refuses real Telegram tokens');
     const operation = url.pathname.split('/').at(-1);
-    const requestBody = options?.body ? JSON.parse(options.body) : {};
+    const requestBody = options?.body instanceof FormData ? Object.fromEntries(options.body.entries()) : options?.body ? JSON.parse(options.body) : {};
     await mkdir('artifacts', { recursive: true });
     await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id, replyMarkup: requestBody.reply_markup, creditsNotice: requestBody.text?.includes('no tiene saldo suficiente') === true }) + '\n');
-    if (operation === 'getFile') return Response.json({ ok: true, result: { file_path: 'voice/synthetic.oga', file_size: 4 } });
+    if (operation === 'getFile') return Response.json({ ok: true, result: requestBody.file_id?.startsWith('synthetic_image') ? { file_path: 'photos/synthetic.png', file_size: syntheticImage.length } : { file_path: 'voice/synthetic.oga', file_size: 4 } });
     if (operation === 'synthetic.oga') return new Response('ogg!');
-    assert.ok(['sendMessage', 'sendChatAction', 'answerCallbackQuery', 'editMessageReplyMarkup', 'setWebhook'].includes(operation));
+    if (operation === 'synthetic.png') return new Response(syntheticImage, { headers: { 'Content-Type': 'image/png' } });
+    assert.ok(['sendPhoto', 'sendMessage', 'sendChatAction', 'answerCallbackQuery', 'editMessageReplyMarkup', 'setWebhook'].includes(operation));
+    if (operation === 'sendPhoto' && requestBody.chat_id === '445566' && !failedDeliveries.has('image')) { failedDeliveries.add('image'); return Response.json({ ok: false }, { status: 503 }); }
     if (operation === 'sendMessage' && requestBody.chat_id === 54321 && !failedDeliveries.has(requestBody.chat_id)) {
       failedDeliveries.add(requestBody.chat_id);
       return Response.json({ ok: false }, { status: 503 });
@@ -61,7 +64,19 @@ globalThis.fetch = async (input, options) => {
   if (!key.toLowerCase().includes('synthetic-')) throw new Error('Fixture refuses non-synthetic provider key');
   if (!key.startsWith(issuer[0]) || key.endsWith('-invalid')) return Response.json({ error: 'Rejected synthetic key' }, { status: 401 });
   if ((options?.method ?? (input instanceof Request ? input.method : 'GET')) === 'POST') {
-    const body = JSON.parse(options?.body ?? await input.clone().text());
+    const body = options?.body instanceof FormData ? Object.fromEntries(options.body.entries()) : JSON.parse(options?.body ?? await input.clone().text());
+    const imageModel = body.model || decodeURIComponent(/\/models\/([^/]+):generateContent$/.exec(url.pathname)?.[1] || '');
+    if (imageModel.startsWith('images-ci-')) {
+      body.model = imageModel;
+      await mkdir('artifacts', { recursive: true });
+      const generation = /\/interactions$|\/images(?:\/generations|\/edits)?$/.test(url.pathname);
+      const parts = body.contents?.[0]?.parts || body.messages?.[0]?.content || [];
+      const prompt = typeof parts === 'string' ? parts : parts.filter(part => part.type === 'text' || part.text).map(part => part.text).join('\n');
+      await appendFile('artifacts/image-fixture-events.jsonl', JSON.stringify({ operation: generation ? 'generate' : 'vision', provider: issuer[1], model: body.model, references: generation ? body.input?.filter?.(item => item.type === 'image').length || body.input_references?.length || (body['image[]'] ? 1 : 0) : parts.filter(part => part.type === 'image' || part.type === 'image_url' || part.inlineData).length }) + '\n');
+      if (generation) return issuer[1] === 'gemini' ? Response.json({ status: 'completed', steps: [{ type: 'model_output', content: [{ type: 'image', mime_type: 'image/png', data: syntheticImage.toString('base64') }] }] }) : Response.json({ data: [{ b64_json: syntheticImage.toString('base64'), media_type: 'image/png' }] });
+      const text = prompt.includes('Contrato de delegación') ? JSON.stringify({ decision: 'direct', managerNotes: 'Synthetic image checked', directResponse: 'Synthetic manager image understood' }) : 'Synthetic image understood';
+      return issuer[1] === 'gemini' ? Response.json({ candidates: [{ content: { parts: [{ text }] } }] }) : issuer[1] === 'claude' ? Response.json({ content: [{ type: 'text', text }] }) : Response.json({ choices: [{ message: { role: 'assistant', content: text } }] });
+    }
     if (url.pathname === '/api/v1/audio/transcriptions') return Response.json({error:'Synthetic insufficient credits'},{status:402});
     if (issuer[1] === 'gemini') {
       assert.equal(url.pathname,'/v1beta/models/gemini-3.5-flash-lite:generateContent','Fixture refuses hardcoded unavailable legacy models');

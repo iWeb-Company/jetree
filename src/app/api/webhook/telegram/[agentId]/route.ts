@@ -34,6 +34,7 @@ export async function POST(request: Request, { params: promisedParams }: { param
     sender_user_id: parsed.senderUserId || null, chat_type: parsed.chatType || null,
     ...(toolEvent ? { tool_event: toolEvent.event } : {}),
     ...('audio' in parsed && parsed.audio ? { audio_file: parsed.audio } : {}),
+    ...('image' in parsed && parsed.image ? { image_file: parsed.image } : {}),
   }, { onConflict: 'bot_id,update_id', ignoreDuplicates: true });
   if (insertError) return NextResponse.json({ error: 'Could not enqueue update.' }, { status: 503 });
   after(async () => { await runTelegramQueue(bot.id).catch(() => {}); });

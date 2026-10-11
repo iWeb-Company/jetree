@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { executeAgentChat } from '@/lib/agents/orchestrator';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-adapter';
 import { Agent, AIProvider } from '@/types';
 import { executeAuthorizedTool } from '@/lib/server/agent-tools';
 import { selectedModelSource } from '@/lib/model-device-contract';
+import { generationTarget, imageErrorMessage, type ImageInput } from '@/lib/chat-images';
+import { attachChatImage, ownedPendingImage, readChatImage, recentConversationImages, saveChatImage } from '@/lib/server/chat-image-store';
+import { executeImageChat } from '@/lib/server/image-chat';
 
 export const runtime = 'nodejs';
 
@@ -22,6 +24,9 @@ function toAgent(row: Record<string, any>): Agent {
     subordinateIds,
     provider: row.provider,
     model: row.model,
+    visionModel: row.vision_model || undefined,
+    imageProvider: row.image_provider || undefined,
+    imageModel: row.image_model || undefined,
     systemPrompt: row.system_prompt || '',
     enabledPluginIds: Array.isArray(row.enabled_tool_ids) ? row.enabled_tool_ids : [],
     status: row.status || 'idle',
@@ -30,26 +35,29 @@ function toAgent(row: Record<string, any>): Agent {
   };
 }
 
-function responseForError(error: unknown) {
+function responseForError(error: unknown, imageIdConsumed = false) {
   const code = error instanceof Error ? error.message : '';
   if (code === 'MODEL_SOURCE_INVALID') return NextResponse.json({ error: 'Conexión del modelo inválida.' }, { status: 400 });
   if (code === 'AUTH_REQUIRED') return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
   if (code === 'SERVER_CONFIGURATION_ERROR') {
     return NextResponse.json({ error: 'La bóveda de credenciales no está configurada en el servidor.' }, { status: 503 });
   }
-  return NextResponse.json({ error: 'No se pudo ejecutar el agente.' }, { status: 500 });
+  return NextResponse.json({ error: 'No se pudo ejecutar el agente.', imageIdConsumed }, { status: 500 });
 }
 
 export async function POST(request: Request) {
   let executionService: ReturnType<typeof getServiceSupabase> | null = null;
   let executionId: string | null = null;
+  let imageIdConsumed = false;
   try {
     const { client, user } = await requireUser(request);
     const body = await request.json();
     const modelSource = selectedModelSource(body.modelSource);
     if (modelSource !== 'api') return NextResponse.json({ error: 'Jetree acepta únicamente conexiones API.' }, { status: 410 });
     const agentId = typeof body.agentId === 'string' ? body.agentId : '';
-    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    const imageId = typeof body.imageId === 'string' ? body.imageId : '';
+    if (imageId && !/^[0-9a-f-]{36}$/i.test(imageId)) return NextResponse.json({ error: 'Imagen inválida.' }, { status: 400 });
+    const message = (typeof body.message === 'string' ? body.message.trim() : '') || (imageId ? 'Describí esta imagen.' : '');
 
     if (!agentId || !message || message.length > 8000) {
       return NextResponse.json({ error: 'Se requiere un agente y un mensaje de hasta 8.000 caracteres.' }, { status: 400 });
@@ -88,6 +96,7 @@ export async function POST(request: Request) {
     );
 
     const providers = new Set<AIProvider>([agent.provider]);
+    providers.add(generationTarget(agent).provider);
     if (agent.roleType === 'manager') {
       for (const subordinate of availableAgents) {
         if (agent.subordinateIds.includes(subordinate.id)) providers.add(subordinate.provider);
@@ -146,12 +155,15 @@ export async function POST(request: Request) {
       .limit(12);
     if (historyError) return NextResponse.json({ error: 'No se pudo cargar el historial de conversación.' }, { status: 500 });
 
+    const service = getServiceSupabase();
+    const pendingImage = imageId ? await ownedPendingImage(service, imageId, user.id, agent.id) : null;
+    const images: ImageInput[] = await recentConversationImages(service, conversationId);
+    if (pendingImage) images.push({ ...await readChatImage(service, pendingImage), label: 'Imagen del mensaje actual' });
     const dailyLimit = Number(process.env.JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT);
     if (!Number.isSafeInteger(dailyLimit) || dailyLimit < 1) {
       return NextResponse.json({ error: 'El límite diario de ejecuciones del workspace no está configurado.' }, { status: 503 });
     }
 
-    const service = getServiceSupabase();
     const { data: withinQuota, error: quotaError } = await service.rpc('consume_workspace_execution_quota', { max_runs: dailyLimit });
     if (quotaError) return NextResponse.json({ error: 'No se pudo verificar el límite del workspace. Aplicá las migraciones requeridas.' }, { status: 503 });
     if (!withinQuota) return NextResponse.json({ error: 'Se alcanzó el límite diario de ejecuciones del workspace.' }, { status: 429 });
@@ -172,35 +184,40 @@ export async function POST(request: Request) {
     executionService = service;
     executionId = execution.id;
 
-    const { error: userMessageError } = await client.from('messages').insert({
+    const { data: userMessage, error: userMessageError } = await client.from('messages').insert({
       conversation_id: conversationId,
       author_user_id: user.id,
       execution_id: executionId,
       role: 'user',
       content: message,
-    });
-    if (userMessageError) throw new AgentEngineError('PERSISTENCE_FAILED');
+    }).select('id').single();
+    if (userMessageError || !userMessage) throw new AgentEngineError('PERSISTENCE_FAILED');
+    if (pendingImage) { await attachChatImage(service, imageId, userMessage.id); imageIdConsumed = true; }
 
     const history = (priorMessages || []).reverse().flatMap(item => {
       if (!['user', 'assistant'].includes(item.role) || typeof item.content !== 'string') return [];
       return [{ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 6000) }];
     });
 
-    const result = await executeAgentChat(agent, message, availableAgents, history, apiKeys,
+    const result = await executeImageChat([agent, message, availableAgents, history, apiKeys,
       undefined, async delegation => {
       const { error } = await service.from('agent_executions').update({ delegation }).eq('id', executionId);
       if (error) throw new AgentEngineError('PERSISTENCE_FAILED');
-    }, (executingAgent, toolId, operation, input) => executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId));
-    const { error: assistantMessageError } = await service.from('messages').insert({
+    }, (executingAgent, toolId, operation, input) => executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId)], images, Boolean(pendingImage), body.generateImage === true);
+    const resultImages = result.generatedImage ? [await saveChatImage(service, user.id, agent.id, result.generatedImage.bytes, 'generated')] : [];
+    const { data: assistantMessage, error: assistantMessageError } = await service.from('messages').insert({
       conversation_id: conversationId,
       execution_id: executionId,
       role: 'assistant',
       content: result.reply,
       delegation: result.delegation || null,
-    });
-    if (assistantMessageError) throw new AgentEngineError('PERSISTENCE_FAILED');
+    }).select('id').single();
+    if (assistantMessageError || !assistantMessage) throw new AgentEngineError('PERSISTENCE_FAILED');
+    for (const image of resultImages) await attachChatImage(service, image.id, assistantMessage.id);
     const { error: completionError } = await service.from('agent_executions').update({
       status: 'completed',
+      provider: result.imageProvider || agent.provider,
+      model: result.imageModel || agent.model,
       output_chars: result.reply.length,
       delegation: result.delegation || null,
       finished_at: new Date().toISOString(),
@@ -208,7 +225,8 @@ export async function POST(request: Request) {
     if (completionError) throw new AgentEngineError('PERSISTENCE_FAILED');
     await service.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
 
-    return NextResponse.json({ ...result, conversationId });
+    const { generatedImage: _bytes, ...publicResult } = result;
+    return NextResponse.json({ ...publicResult, images: resultImages, conversationId });
   } catch (error) {
     const code = error instanceof Error ? error.message : '';
     if (executionService && executionId) {
@@ -229,16 +247,17 @@ export async function POST(request: Request) {
         finished_at: new Date().toISOString(),
       }).eq('id', executionId);
     }
+    if (code.startsWith('IMAGE_')) return NextResponse.json({ error: imageErrorMessage(code), code, imageIdConsumed }, { status: code === 'IMAGE_ACCESS_DENIED' ? 404 : code === 'IMAGE_TOO_LARGE' ? 413 : code === 'IMAGE_CREDENTIAL_REQUIRED' ? 409 : 502 });
     if (code === 'PROVIDER_CREDENTIAL_REQUIRED') {
       return NextResponse.json({ error: 'Falta una conexión API para el proveedor elegido.' }, { status: 409 });
     }
     if (error instanceof AgentEngineError) {
       const status = code === 'PROVIDER_CREDENTIAL_REQUIRED' ? 409 : code === 'AGENT_CONTEXT_TOO_LARGE' ? 413 : code === 'PERSISTENCE_FAILED' ? 500 : 502;
-      return NextResponse.json({ error: providerErrorMessage(code), code }, { status });
+      return NextResponse.json({ error: providerErrorMessage(code), code, imageIdConsumed }, { status });
     }
     if (code === 'MANAGER_DECISION_INVALID' || code === 'DELEGATION_TARGET_NOT_ALLOWED') {
-      return NextResponse.json({ error: providerErrorMessage(code), code }, { status: 502 });
+      return NextResponse.json({ error: providerErrorMessage(code), code, imageIdConsumed }, { status: 502 });
     }
-    return responseForError(error);
+    return responseForError(error, imageIdConsumed);
   }
 }
