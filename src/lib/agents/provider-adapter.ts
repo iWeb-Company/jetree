@@ -1,5 +1,5 @@
 import { Agent } from '@/types';
-import { analyzeWithChatGPT, analyzeWithOpenRouter, analyzeWithDeepSeek } from '@/lib/openai';
+import { analyzeWithChatGPT, analyzeWithOpenRouter, analyzeWithDeepSeek, analyzeWithGroq } from '@/lib/openai';
 import { analyzeWithGemini } from '@/lib/gemini';
 import { analyzeWithClaude } from '@/lib/claude';
 
@@ -31,6 +31,7 @@ export async function callAIProvider(agent: Agent, prompt: string, apiKeys: Reco
   if (prompt.length > 24_000) throw new AgentEngineError('AGENT_CONTEXT_TOO_LARGE');
   if (!apiKeys[agent.provider]) throw new AgentEngineError('PROVIDER_CREDENTIAL_REQUIRED');
   try {
+    if (agent.provider === 'groq') return (await analyzeWithGroq(prompt, apiKeys.groq, agent.model)) || '';
     if (agent.provider === 'claude') return (await analyzeWithClaude(prompt, apiKeys.claude, agent.model)) || '';
     if (agent.provider === 'openai') return (await analyzeWithChatGPT(prompt, apiKeys.openai, agent.model)) || '';
     if (agent.provider === 'gemini') return (await analyzeWithGemini(prompt, apiKeys.gemini, agent.model)) || '';

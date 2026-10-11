@@ -76,6 +76,7 @@ export default function Home() {
 
   // Conexiones de proveedor API propias del usuario (solo estado, nunca claves).
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([
+    { id: 'sub-groq', provider: 'groq', name: 'Groq', connected: false },
     { id: 'sub-deepseek', provider: 'deepseek', name: 'DeepSeek API', connected: false },
     {
       id: 'sub-gemini',
@@ -678,7 +679,7 @@ export default function Home() {
               <span>🔐</span>
               <span className="hidden sm:inline">Conexiones IA</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-200 font-mono">
-                {connectedProvidersCount}/5
+                {connectedProvidersCount}/{subscriptions.length}
               </span>
             </button>
 
