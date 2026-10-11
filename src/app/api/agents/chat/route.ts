@@ -9,7 +9,7 @@ import { selectedModelSource } from '@/lib/model-device-contract';
 
 export const runtime = 'nodejs';
 
-const supportedProviders: AIProvider[] = ['openai', 'gemini', 'claude', 'custom', 'deepseek', 'freellmapi'];
+const supportedProviders: AIProvider[] = ['openai', 'gemini', 'claude', 'custom', 'deepseek', 'groq'];
 
 function toAgent(row: Record<string, any>): Agent {
   const subordinateIds = Array.isArray(row.subordinate_ids) ? row.subordinate_ids as string[] : [];

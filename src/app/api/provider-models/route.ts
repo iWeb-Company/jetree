@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const { user } = await requireUser(request);
     const provider = new URL(request.url).searchParams.get('provider');
-    if (!provider || !['openai', 'claude', 'gemini', 'custom', 'deepseek', 'freellmapi'].includes(provider)) return NextResponse.json({ error: 'Proveedor inválido.' }, { status: 400 });
+    if (!provider || !['openai', 'claude', 'gemini', 'custom', 'deepseek', 'groq'].includes(provider)) return NextResponse.json({ error: 'Proveedor inválido.' }, { status: 400 });
     const connectionId = new URL(request.url).searchParams.get('connectionId') || undefined;
     if (connectionId && !/^[a-f0-9-]{36}$/i.test(connectionId)) return NextResponse.json({ error: 'Conexión inválida.' }, { status: 400 });
     const key = await getUserProviderApiKey(user.id, provider as ApiProvider, connectionId);

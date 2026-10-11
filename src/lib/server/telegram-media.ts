@@ -38,13 +38,13 @@ export async function downloadTelegramAudio(token: string, audio: TelegramAudio,
 
 export function transcriptionCandidates(preferred: string): ApiProvider[] {
   // OpenRouter's free chat models do not make Whisper transcription free.
-  const order = preferred === 'custom' ? ['gemini', 'openai', 'custom'] : [preferred, 'gemini', 'openai', 'custom'];
-  return [...new Set(order)].filter(provider => ['gemini', 'openai', 'custom'].includes(provider)) as ApiProvider[];
+  const order = preferred === 'custom' ? ['gemini', 'openai', 'groq', 'custom'] : [preferred, 'gemini', 'openai', 'groq', 'custom'];
+  return [...new Set(order)].filter(provider => ['gemini', 'openai', 'groq', 'custom'].includes(provider)) as ApiProvider[];
 }
 
 export function transcriptionProvider(preferred: string, keys: Record<string, string>): ApiProvider {
   for (const provider of transcriptionCandidates(preferred)) {
-    if (['gemini', 'openai', 'custom'].includes(provider) && keys[provider]) return provider as ApiProvider;
+    if (keys[provider]) return provider;
   }
   throw new Error('AUDIO_PROVIDER_REQUIRED');
 }
@@ -70,10 +70,10 @@ export async function transcribeTelegramAudio(bytes: Buffer, audio: TelegramAudi
   } else if (provider === 'custom') {
     url = 'https://openrouter.ai/api/v1/audio/transcriptions'; headers = { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` };
     body = JSON.stringify({ model: 'openai/whisper-1', input_audio: { data: bytes.toString('base64'), format } });
-  } else if (provider === 'openai') {
+  } else if (provider === 'openai' || provider === 'groq') {
     if (format === 'aac') throw new Error('AUDIO_FORMAT_UNSUPPORTED');
-    url = 'https://api.openai.com/v1/audio/transcriptions'; headers = { Authorization: `Bearer ${key}` };
-    body = new FormData(); body.set('model', 'whisper-1'); body.set('file', new Blob([new Uint8Array(bytes)], { type: audio.mimeType }), `telegram.${format}`);
+    url = provider === 'groq' ? 'https://api.groq.com/openai/v1/audio/transcriptions' : 'https://api.openai.com/v1/audio/transcriptions'; headers = { Authorization: `Bearer ${key}` };
+    body = new FormData(); body.set('model', provider === 'groq' ? 'whisper-large-v3-turbo' : 'whisper-1'); body.set('file', new Blob([new Uint8Array(bytes)], { type: audio.mimeType }), `telegram.${format}`);
   } else throw new Error('AUDIO_PROVIDER_REQUIRED');
   const response = await fetcher(url, { method: 'POST', headers, body, redirect: 'error', signal: AbortSignal.timeout(45_000) });
   const result = await response.json().catch(() => null);

@@ -76,7 +76,7 @@ export default function Home() {
 
   // Conexiones de proveedor API propias del usuario (solo estado, nunca claves).
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([
-    { id: 'sub-freellmapi', provider: 'freellmapi', name: 'FreeLLMAPI', connected: false },
+    { id: 'sub-groq', provider: 'groq', name: 'Groq', connected: false },
     { id: 'sub-deepseek', provider: 'deepseek', name: 'DeepSeek API', connected: false },
     {
       id: 'sub-gemini',

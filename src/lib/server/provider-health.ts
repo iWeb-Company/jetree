@@ -1,13 +1,12 @@
-import { freeLLMApiBaseUrl } from './freellmapi';
-export type ApiProvider = 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek' | 'freellmapi';
+export type ApiProvider = 'openai' | 'gemini' | 'claude' | 'custom' | 'deepseek' | 'groq';
 export type ProviderHealthCode = 'invalid_credentials' | 'rate_limited' | 'provider_unavailable' | 'network_error' | 'unknown';
 
 export type ProviderHealth = { ok: true } | { ok: false; code: ProviderHealthCode };
 
 function endpointFor(provider: ApiProvider): { url: string; headers: Record<string, string> } {
   switch (provider) {
-    case 'freellmapi':
-      return { url: freeLLMApiBaseUrl() + '/models', headers: {} };
+    case 'groq':
+      return { url: 'https://api.groq.com/openai/v1/models', headers: {} };
     case 'openai':
       return { url: 'https://api.openai.com/v1/models', headers: {} };
     case 'gemini':
@@ -33,11 +32,9 @@ export async function validateProviderApiKey(
   apiKey: string,
   fetcher: typeof fetch = fetch,
 ): Promise<ProviderHealth> {
-  let endpoint: ReturnType<typeof endpointFor>;
-  try { endpoint = endpointFor(provider); }
-  catch { return { ok: false, code: 'provider_unavailable' }; }
+  const endpoint = endpointFor(provider);
   const headers = { ...endpoint.headers };
-  if (provider === 'openai' || provider === 'custom' || provider === 'deepseek' || provider === 'freellmapi') headers.Authorization = `Bearer ${apiKey}`;
+  if (provider === 'openai' || provider === 'custom' || provider === 'deepseek' || provider === 'groq') headers.Authorization = `Bearer ${apiKey}`;
   if (provider === 'gemini') headers['x-goog-api-key'] = apiKey;
   if (provider === 'claude') headers['x-api-key'] = apiKey;
 
@@ -45,7 +42,7 @@ export async function validateProviderApiKey(
   const timeout = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetcher(endpoint.url, { method: 'GET', headers, signal: controller.signal, cache: 'no-store', redirect: 'error' });
-    if (provider === 'freellmapi' && response.ok) {
+    if (provider === 'groq' && response.ok) {
       const body = await response.json().catch(() => null);
       return Array.isArray(body?.data) ? { ok: true } : { ok: false, code: 'provider_unavailable' };
     }

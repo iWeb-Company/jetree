@@ -19,6 +19,8 @@ test('audio limits and transcription keys use selected providers only', () => {
   assert.equal(transcriptionProvider('custom', { openai: 'openai', custom: 'router' }), 'openai');
   assert.equal(transcriptionProvider('custom', { custom: 'router' }), 'custom');
   assert.equal(transcriptionProvider('claude', { gemini: 'google' }), 'gemini');
+  assert.equal(transcriptionProvider('groq', { groq: 'groq', gemini: 'google' }), 'groq');
+  assert.equal(transcriptionProvider('custom', { groq: 'groq', custom: 'router' }), 'groq');
   assert.throws(() => transcriptionProvider('deepseek', { deepseek: 'key' }), /PROVIDER_REQUIRED/);
 });
 test('Telegram downloads only approved file paths and enforces actual bytes without trusting metadata', async () => {
@@ -34,8 +36,8 @@ test('Telegram downloads only approved file paths and enforces actual bytes with
     return ++fetches === 1 ? Response.json({ ok: true, result: { file_path: 'voice/a.oga' } }) : new Response(new Uint8Array(MAX_AUDIO_BYTES + 1));
   }), /AUDIO_TOO_LARGE/);
 });
-test('Google, OpenAI and OpenRouter transcription transport never places keys in URLs', async () => {
-  for (const provider of ['gemini', 'openai', 'custom'] as const) {
+test('Google, OpenAI, Groq and OpenRouter transcription transport never places keys in URLs', async () => {
+  for (const provider of ['gemini', 'openai', 'groq', 'custom'] as const) {
     const text = await transcribeTelegramAudio(Buffer.from('ogg!'), audio, provider, 'synthetic-key', async (url, options) => {
       if (provider === 'gemini' && !options?.method) return Response.json({models:[{name:'models/gemini-9.7-flash-lite',supportedGenerationMethods:['generateContent']}]});
       assert.equal(String(url).includes('synthetic-key'), false); assert.equal(options?.method, 'POST');
@@ -44,6 +46,13 @@ test('Google, OpenAI and OpenRouter transcription transport never places keys in
         assert.equal(JSON.parse(String(options?.body)).generationConfig.thinkingConfig,undefined);
       }
       if (provider === 'openai') assert.ok(options?.body instanceof FormData);
+      if (provider === 'groq') {
+        assert.equal(String(url), 'https://api.groq.com/openai/v1/audio/transcriptions');
+        assert.equal(new Headers(options?.headers).get('Authorization'), 'Bearer synthetic-key');
+        assert.equal(options?.redirect, 'error');
+        assert.ok(options?.body instanceof FormData);
+        assert.equal(options.body.get('model'), 'whisper-large-v3-turbo');
+      }
       return provider === 'gemini' ? Response.json({ candidates: [{ content: { parts: [{ text: 'hola' }] } }] }) : Response.json({ text: 'hola' });
     });
     assert.equal(text, 'hola');

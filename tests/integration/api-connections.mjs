@@ -27,8 +27,8 @@ try {
     users.push({ ...user, email, password, token: db(await client.auth.signInWithPassword({ email, password })).session.access_token });
   }
   const own = users[0]; const other = users[1];
-  const prefixes = ['AIzaSynthetic-', 'sk-ant-api03-synthetic-', 'sk-proj-synthetic-', 'sk-or-v1-synthetic-', 'sk-synthetic-deepseek-', 'freellmapi-synthetic-'];
-  const providers = ['gemini', 'claude', 'openai', 'custom', 'deepseek', 'freellmapi'];
+  const prefixes = ['AIzaSynthetic-', 'sk-ant-api03-synthetic-', 'sk-proj-synthetic-', 'sk-or-v1-synthetic-', 'sk-synthetic-deepseek-', 'gsk_synthetic-'];
+  const providers = ['gemini', 'claude', 'openai', 'custom', 'deepseek', 'groq'];
   const connections = [];
   for (let i = 0; i < prefixes.length; i++) {
     const key = prefixes[i] + randomBytes(12).toString('hex');
@@ -70,10 +70,10 @@ try {
   assert.equal((await api(own, '/api/agents/chat', 'POST', { agentId: agent.id, message: 'test', modelSource: 'local' })).status, 410);
   for (const path of ['/api/model-devices/relay', '/api/mcp-oauth/token', '/mcp']) assert.equal((await api(own, path, 'POST', {})).status, 410);
   console.log('PASS DeepSeek chat adapter and server-side subscription retirement');
-  await service.from('agents').update({ provider: 'freellmapi', model: 'synthetic-freellmapi' }).eq('id', agent.id);
-  const gatewayChat = await api(own, '/api/agents/chat', 'POST', { agentId: agent.id, message: 'FreeLLMAPI synthetic test' });
-  assert.equal(gatewayChat.status, 200); assert.match(gatewayChat.body.reply, /Synthetic DeepSeek API OK/);
-  console.log('PASS FreeLLMAPI authenticated catalog, encrypted key and chat');
+  db(await service.from('agents').update({ provider: 'groq', model: 'synthetic-groq' }).eq('id', agent.id));
+  const groqChat = await api(own, '/api/agents/chat', 'POST', { agentId: agent.id, message: 'Groq synthetic test' });
+  assert.equal(groqChat.status, 200); assert.match(groqChat.body.reply, /Synthetic Groq API OK/);
+  console.log('PASS Groq authenticated catalog, encrypted key and chat');
 
   browser = await chromium.launch({ headless: true });
   const context = await browser.newContext(); const page = await context.newPage();
