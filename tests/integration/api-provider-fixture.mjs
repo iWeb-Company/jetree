@@ -17,11 +17,13 @@ const issuers = new Map([
 ]);
 globalThis.fetch = async (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (url.hostname === 's3-alpha.figma.com') { assert.equal(url.pathname,'/synthetic-figma.png');return new Response(syntheticImage,{headers:{'Content-Type':'image/png'}}); }
   if (url.hostname === 'api.figma.com') {
     const token = new Headers(options?.headers).get('X-Figma-Token');
     assert.match(token || '', /^synthetic-figma-[0-9a-f-]{36}$/);
     const owner = token.slice('synthetic-figma-'.length);
     if (url.pathname === '/v1/me') return Response.json({ id: owner, handle: 'Synthetic Figma' });
+    if (url.pathname.startsWith('/v1/images/')) return Response.json({images:{'1:2':'https://s3-alpha.figma.com/synthetic-figma.png'}});
     if (url.pathname.startsWith('/v1/files/')) {
       const fileKey = url.pathname.split('/')[3];
       if (url.pathname.endsWith('/comments')) return Response.json({ comments: [{ id:'comment1',message:'Synthetic comment',user:{handle:'Designer'} }] });

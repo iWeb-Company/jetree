@@ -2,6 +2,7 @@
 
 import { mergeToolMessage } from '@/lib/tool-feedback';
 import ChatApprovals from '@/components/ChatApprovals';
+import FigmaConversationJobs from '@/components/FigmaConversationJobs';
 import ChatImage from '@/components/ChatImage';
 import { generationTarget, imageAdvice, imageRequest, type ImageRef } from '@/lib/chat-images';
 import { prepareImageUpload } from '@/lib/image-upload';
@@ -344,6 +345,7 @@ export default function AgentChatDrawer({
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 font-sans">
           {usableToolIds.length > 0 && <p className="text-xs text-gray-400">Pedí lo que necesitás: el agente elegirá GitHub o Drive. Las acciones que modifican datos requieren tu aprobación aquí.</p>}
           <ChatApprovals conversationId={conversationId} refreshKey={messages.length} />
+          {agent.enabledPluginIds?.includes('plugin-figma-core') && <FigmaConversationJobs conversationId={conversationId} />}
           {messages.map(msg => {
             const isUser = msg.role === 'user';
             return (

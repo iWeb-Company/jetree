@@ -72,6 +72,10 @@ export async function verifyFigmaSession(session: Awaited<ReturnType<typeof requ
   // REST instead, so opening a different file cannot consume this queue.
   const file = await figmaApi(token, `/files/${session.file_key}?depth=1&plugin_data=shared`, 'GET', undefined, fetch, true);
   if (file.document?.sharedPluginData?.jetree?.bridge !== session.marker) throw new Error('FIGMA_PAIR_WAITING');
+  const service = getServiceSupabase();
+  const { data: active,error } = await service.from('figma_jobs').select('id').eq('file_key',session.file_key).eq('status','leased').limit(1);
+  checked(error);if(active?.length)throw new Error('FIGMA_PAIR_BUSY');
+  checked((await service.from('figma_sessions').update({revoked_at:now()}).eq('user_id',session.user_id).eq('file_key',session.file_key).eq('verified',true).neq('id',session.id).is('revoked_at',null)).error);
   checked((await getServiceSupabase().from('figma_sessions').update({ verified: true, last_seen_at: now() }).eq('id', session.id).is('revoked_at', null)).error);
   return { verified: true };
 }

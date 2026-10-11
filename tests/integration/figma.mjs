@@ -8,6 +8,7 @@ const origin=process.env.JETREE_APP_URL;assert.equal(new URL(origin).hostname,'1
 const options={auth:{persistSession:false,autoRefreshToken:false}};
 const service=createClient(process.env.NEXT_PUBLIC_SUPABASE_URL,process.env.SUPABASE_SERVICE_ROLE_KEY,options);
 const db=r=>{assert.equal(r.error,null,r.error?.message);return r.data;};
+function encrypt(value){const iv=randomBytes(12);const cipher=createCipheriv('aes-256-gcm',Buffer.from(process.env.JETREE_CREDENTIALS_ENCRYPTION_KEY,'base64'),iv);return{ciphertext:Buffer.concat([cipher.update(value,'utf8'),cipher.final()]).toString('base64'),iv:iv.toString('base64'),auth_tag:cipher.getAuthTag().toString('base64')};}
 const users=[];let browser;
 async function api(user,path,body){const response=await fetch(origin+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+user.token,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});return {status:response.status,body:await response.json()};}
 async function bridge(token,body){const response=await fetch(origin+'/api/figma/plugin',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});return{status:response.status,body:await response.json()};}
@@ -24,10 +25,12 @@ try{
   assert.equal((await api(user,'/api/figma',{action:'register',url:'https://www.figma.com/design/Synthetic123/Test'})).status,200);
   assert.equal((await api(users[1],'/api/figma')).body.files.length,0);
   const department=db(await service.from('departments').insert({name:'Figma CI',created_by:user.id}).select('id').single());
-  const agents=db(await service.from('agents').insert(['manager','independent'].map((role_type,i)=>({name:i?'Figma specialist':'Figma manager',role_type,department_id:department.id,created_by:user.id,provider:'custom',model:'synthetic-custom:free',enabled_tool_ids:['plugin-figma-core']}))).select('id'));
+  const agents=db(await service.from('agents').insert(['manager','independent'].map((role_type,i)=>({name:i?'Figma specialist':'Figma manager',role_type,department_id:department.id,created_by:user.id,provider:'custom',model:'images-ci-figma',enabled_tool_ids:['plugin-figma-core']}))).select('id'));
+  const visionSecret=encrypt('sk-or-v1-synthetic-figma');db(await service.rpc('save_provider_api_connection',{owner_id:user.id,detected_provider:'custom',encrypted_value:visionSecret.ciphertext,encrypted_iv:visionSecret.iv,encrypted_tag:visionSecret.auth_tag}));
   const conversation=db(await service.from('conversations').insert({department_id:department.id,agent_id:agents[0].id,created_by:user.id}).select('id').single());
   const call=(agent,operation,input,caller=user)=>api(caller,'/api/agent-tools',{agentId:agent.id,toolId:'plugin-figma-core',operation,input,...(agent.id===agents[0].id?{conversationId:conversation.id}:{})});
   for(const agent of agents){assert.equal((await call(agent,'list_figma_files',{})).body.result.files.length,1);assert.equal((await call(agent,'get_figma_file',{fileKey:'Synthetic123'})).status,200);}
+  for(const agent of agents){const view=await call(agent,'inspect_figma',{fileKey:'Synthetic123',nodeIds:['1:2'],question:'Describí la pantalla'});assert.equal(view.status,200,JSON.stringify(view.body));assert.match(view.body.result.description,/Synthetic image understood/);}
   assert.equal((await call(agents[0],'get_figma_file',{fileKey:'Synthetic123'},users[1])).status,403);
   const pair=await api(user,'/api/figma',{action:'pair',fileKey:'Synthetic123'});assert.equal(pair.status,200);
   const paired=await bridge(null,{action:'pair_start',code:pair.body.code});assert.equal(paired.status,200);

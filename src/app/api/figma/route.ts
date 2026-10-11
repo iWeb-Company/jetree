@@ -9,6 +9,11 @@ export async function GET(request: Request) {
     const { user } = await requireUser(request); const service = getServiceSupabase();
     await service.from('figma_jobs').update({ status:'uncertain',error_code:'FIGMA_LEASE_EXPIRED' }).eq('user_id',user.id).eq('status','leased').lt('lease_until',new Date().toISOString());
     const query = new URL(request.url).searchParams;
+    if (query.has('conversationId')) {
+      const { data,error } = await service.from('figma_jobs').select('id,summary,status,result,preview_path').eq('user_id',user.id).eq('conversation_id',query.get('conversationId')).order('created_at',{ascending:false}).limit(10);
+      if(error)throw new Error('FIGMA_STORAGE_FAILED');
+      return NextResponse.json({jobs:(data||[]).map(job=>({...job,preview_path:undefined,hasPreview:Boolean(job.preview_path)}))},{headers:{'Cache-Control':'no-store'}});
+    }
     if (query.has('preview')) {
       const { data: job, error } = await service.from('figma_jobs').select('preview_path').eq('id', query.get('preview')).eq('user_id', user.id).maybeSingle();
       if (error || !job?.preview_path) throw new Error('TOOL_NOT_AUTHORIZED');
