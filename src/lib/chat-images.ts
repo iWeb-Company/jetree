@@ -4,7 +4,7 @@ export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_IMAGE_UPLOAD_BYTES = 768 * 1024;
 export const IMAGE_PROVIDERS: AIProvider[] = ['gemini', 'openai', 'custom', 'claude', 'groq', 'deepseek'];
 export const IMAGE_MODELS = {
-  vision: { gemini: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'], openai: ['gpt-4o', 'gpt-4o-mini'], claude: ['claude-sonnet-4-6'], groq: ['qwen/qwen3.8-27b'], custom: ['google/gemini-3.8-flash', 'openai/gpt-4o'], deepseek: [] },
+  vision: { gemini: ['gemini-3.8-flash', 'gemini-3.5-flash-lite'], openai: ['gpt-4o', 'gpt-4o-mini'], claude: ['claude-sonnet-5-5', 'claude-haiku-5-5'], groq: ['qwen/qwen3.8-27b'], custom: ['google/gemini-3.8-flash', 'openai/gpt-4o'], deepseek: [] },
   generation: { gemini: ['gemini-nano-banana-2.1', 'gemini-3.1-flash-lite-image'], openai: ['gpt-image-2.5-sunburst', 'gpt-image-1.5'], custom: ['google/gemini-3.1-flash-image', 'openai/gpt-image-1'], claude: [], groq: [], deepseek: [] },
 };
 

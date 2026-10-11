@@ -35,14 +35,14 @@ function toAgent(row: Record<string, any>): Agent {
   };
 }
 
-function responseForError(error: unknown) {
+function responseForError(error: unknown, imageIdConsumed = false) {
   const code = error instanceof Error ? error.message : '';
   if (code === 'MODEL_SOURCE_INVALID') return NextResponse.json({ error: 'Conexión del modelo inválida.' }, { status: 400 });
   if (code === 'AUTH_REQUIRED') return NextResponse.json({ error: 'Autenticación requerida.' }, { status: 401 });
   if (code === 'SERVER_CONFIGURATION_ERROR') {
     return NextResponse.json({ error: 'La bóveda de credenciales no está configurada en el servidor.' }, { status: 503 });
   }
-  return NextResponse.json({ error: 'No se pudo ejecutar el agente.' }, { status: 500 });
+  return NextResponse.json({ error: 'No se pudo ejecutar el agente.', imageIdConsumed }, { status: 500 });
 }
 
 export async function POST(request: Request) {
@@ -256,8 +256,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: providerErrorMessage(code), code, imageIdConsumed }, { status });
     }
     if (code === 'MANAGER_DECISION_INVALID' || code === 'DELEGATION_TARGET_NOT_ALLOWED') {
-      return NextResponse.json({ error: providerErrorMessage(code), code }, { status: 502 });
+      return NextResponse.json({ error: providerErrorMessage(code), code, imageIdConsumed }, { status: 502 });
     }
-    return responseForError(error);
+    return responseForError(error, imageIdConsumed);
   }
 }

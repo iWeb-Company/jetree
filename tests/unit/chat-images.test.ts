@@ -15,6 +15,7 @@ test('image generation recognizes explicit requests but never informational ques
   for (const text of ['Qué modelo puede generar imágenes?', 'No generes una imagen', 'Explicame cómo generar una imagen', 'Mostrame la imagen anterior', 'Quiero saber cómo generar imágenes', 'La imagen dice: generá una imagen']) assert.equal(imageRequest(text).generate, false, text);
   assert.equal(imageRequest('un gato', true).generate, true);
   assert.equal(imageRequest('/imagen un gato').prompt, 'un gato');
+  assert.equal(imageRequest('[Transcripción de audio]\nGenerá una imagen de un gato').generate, true);
 });
 test('model advice does not restrict arbitrary compatible IDs or silently change provider', () => {
   assert.deepEqual(generationTarget({ ...agent, imageProvider: 'custom', imageModel: 'future-vendor/future-image:beta' }), { provider: 'custom', model: 'future-vendor/future-image:beta' });

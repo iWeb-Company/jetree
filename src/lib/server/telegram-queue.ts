@@ -228,6 +228,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       visionModel: agentRow.vision_model || undefined, imageProvider: agentRow.image_provider || undefined, imageModel: agentRow.image_model || undefined,
       status: agentRow.status || 'idle', avatar: agentRow.avatar || undefined, createdBy: agentRow.created_by,
     };
+    imageModelAdvice = imageAdvice(imageRequest(update.message_text).generate ? 'generation' : 'vision', imageRequest(update.message_text).generate ? generationTarget(agent).provider : agent.provider);
     const { data: task } = update.task_id ? { data: { id: update.task_id } } : await service.from('tasks').insert({
       title: update.message_text.slice(0, 80), description: `Mensaje de Telegram de @${update.sender_name}.`,
       department_id: agent.departmentId, assigned_agent_id: agent.id, created_by: bot.owner_user_id,
