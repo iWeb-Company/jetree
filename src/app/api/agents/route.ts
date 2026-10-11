@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     if (!payload.department_id || typeof payload.name !== 'string' || !payload.name.trim() || !payload.provider || typeof payload.model !== 'string' || !payload.model.trim()) {
       return NextResponse.json({ error: 'department_id, name, provider y model son obligatorios' }, { status: 400 });
     }
-    if (!['openai', 'gemini', 'claude', 'custom', 'deepseek'].includes(String(payload.provider))) {
+    if (!['openai', 'gemini', 'claude', 'custom', 'deepseek', 'groq'].includes(String(payload.provider))) {
       return NextResponse.json({ error: 'Proveedor no soportado.' }, { status: 400 });
     }
     const { data, error } = await client.from('agents').insert({ ...payload, created_by: user.id }).select().single();

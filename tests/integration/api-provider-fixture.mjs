@@ -8,6 +8,7 @@ const realFetch = globalThis.fetch;
 const failedDeliveries = new Set();
 const issuers = new Map([
   ['api.openai.com', ['sk-proj-synthetic-', 'openai']],
+  ['api.groq.com', ['gsk_synthetic-', 'groq']],
   ['api.deepseek.com', ['sk-synthetic-deepseek-', 'deepseek']],
   ['api.anthropic.com', ['sk-ant-api03-synthetic-', 'claude']],
   ['generativelanguage.googleapis.com', ['AIzaSynthetic-', 'gemini']],
@@ -67,7 +68,7 @@ globalThis.fetch = async (input, options) => {
       assert.equal(body.contents[0].parts[1].inlineData.mimeType, 'audio/ogg');
       return Response.json({ candidates: [{ content: { parts: [{ text: 'Respondé: audio comprendido' }] } }] });
     }
-    assert.ok(['synthetic-deepseek','synthetic-custom:free'].includes(body.model));
+    assert.ok(['synthetic-deepseek','synthetic-custom:free','synthetic-groq'].includes(body.model));
     const toolPrompt = body.messages?.map(item => item.content).join('\n') || '';
     if (toolPrompt.includes('[Telegram tools CI]')) {
       let decision;
@@ -90,7 +91,7 @@ globalThis.fetch = async (input, options) => {
       return Response.json({ choices: [{ message: { role: 'assistant', content: JSON.stringify(decision) } }] });
     }
     const audioPrompt = JSON.stringify(body.messages).includes('[Transcripción de audio]');
-    return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: audioPrompt ? 'Synthetic audio understood' : 'Synthetic DeepSeek API OK' } }] });
+    return Response.json({ id: 'synthetic', choices: [{ message: { role: 'assistant', content: audioPrompt ? 'Synthetic audio understood' : issuer[1] === 'groq' ? 'Synthetic Groq API OK' : 'Synthetic DeepSeek API OK' } }] });
   }
   return issuer[1] === 'gemini'
     ? Response.json({ models: [{ name: 'models/gemini-3.5-flash-lite', supportedGenerationMethods: ['generateContent'] }] })
