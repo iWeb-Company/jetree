@@ -1,0 +1,21 @@
+name: Verify coding runner
+on:
+  pull_request:
+  push:
+    branches: [dev]
+permissions:
+  contents: read
+jobs:
+  isolated-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test coding-runner/test/*.test.mjs
+      - name: Build pinned experimental runner
+        run: docker build -t jetree-code:opencode-1.19.0 coding-runner
+      - name: Verify actual engine tools and isolation without live credentials
+        run: node coding-runner/test/docker.mjs

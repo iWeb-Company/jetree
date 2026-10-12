@@ -1,0 +1,16 @@
+ARG NODE_IMAGE=public.ecr.aws/docker/library/node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
+FROM ${NODE_IMAGE}
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends git ripgrep && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/jetree-code
+COPY package.json package-lock.json ./
+RUN npm ci && npm cache clean --force
+COPY gateway.mjs ./
+# OpenCode's dynamic provider installer uses its cache. Ship the pinned provider
+# there so inference never needs npm/network access from the sandbox.
+RUN mkdir -p /home/node/.cache/opencode && cp package.json /home/node/.cache/opencode/package.json && cp -a node_modules /home/node/.cache/opencode/ && chown -R node:node /home/node/.cache
+ENV PATH=/opt/jetree-code/node_modules/.bin:$PATH
+ENV OPENCODE_DISABLE_AUTOUPDATE=true OPENCODE_DISABLE_LSP_DOWNLOAD=true
+USER node
+WORKDIR /workspace
+CMD ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
