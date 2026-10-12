@@ -8,7 +8,7 @@ RUN npm ci && npm cache clean --force
 COPY gateway.mjs ./
 # OpenCode's dynamic provider installer uses its cache. Ship the pinned provider
 # there so inference never needs npm/network access from the sandbox.
-RUN mkdir -p /home/node/.cache/opencode && cp package.json /home/node/.cache/opencode/package.json && cp -a node_modules /home/node/.cache/opencode/ && chown -R node:node /home/node/.cache
+RUN mkdir -p /home/node/.cache/opencode/bin /home/node/.cache/opencode/packages/@ai-sdk/openai-compatible@3.0.67 && cp package.json package-lock.json /home/node/.cache/opencode/packages/@ai-sdk/openai-compatible@3.0.67/ && cp -a node_modules /home/node/.cache/opencode/packages/@ai-sdk/openai-compatible@3.0.67/ && chown -R node:node /home/node/.cache
 ENV PATH=/opt/jetree-code/node_modules/.bin:$PATH
 ENV OPENCODE_DISABLE_AUTOUPDATE=true OPENCODE_DISABLE_LSP_DOWNLOAD=true
 USER node
