@@ -15,6 +15,10 @@ const output=path.join(root,'run');await prepare(project,output);
 const fixture=path.join(path.dirname(fileURLToPath(import.meta.url)),'fixtures');
 let checkedIsolation=false;
 const execute=async(program,args,options)=>{
+  if(program==='docker'&&args[0]==='rm'){
+    const engine=args.find(value=>value.endsWith('-engine'));
+    if(engine)console.log((await command('docker',['logs','--tail','60',engine]).catch(error=>error.output||'')).slice(-8000));
+  }
   if(program==='docker' && args[0]==='run' && args.some(value=>value.endsWith('-broker'))){
     const image=args.indexOf('jetree-code:opencode-1.19.0');args=[...args.slice(0,image),'--mount',`type=bind,source=${fixture},target=/ci,readonly`,...args.slice(image,image+1),'node','/ci/provider.mjs'];
   }
