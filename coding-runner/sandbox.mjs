@@ -38,11 +38,16 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     await execute('docker', ['network', 'create', '--internal', net]); resourcesStarted = true;
     await execute('docker', [...isolationArgs({ name: broker, network: 'bridge' }), '--env-file', brokerEnv, IMAGE, 'node', '/opt/jetree-code/gateway.mjs']);
     await execute('docker', ['network', 'connect', '--alias', 'broker', net, broker]);
-    await execute('docker', [...isolationArgs({ name: engine, network: net, uid: process.getuid?.() || 1000, gid: process.getgid?.() || 1000 }), '--env-file', engineEnv, '--mount', `type=bind,source=${workspace},target=/workspace`, '-p', '127.0.0.1::4096', IMAGE]);
-    const ports = JSON.parse(await execute('docker', ['inspect', '--format', '{{json .NetworkSettings.Ports}}', engine]));
-    const bindings = ports['4096/tcp'];
-    if (bindings?.length !== 1 || bindings[0].HostIp !== '127.0.0.1' || !/^\d+$/.test(bindings[0].HostPort)) throw new Error('ENGINE_PORT_INVALID');
-    adapter = new OpenCodeAdapter('http://127.0.0.1:' + bindings[0].HostPort, password);
+    await execute('docker', [...isolationArgs({ name: engine, network: net, uid: process.getuid?.() || 1000, gid: process.getgid?.() || 1000 }), '--env-file', engineEnv, '--mount', `type=bind,source=${workspace},target=/workspace`, IMAGE]);
+    // Keep the API entirely inside the container; no host port is published.
+    // Docker exec transports a bounded HTTP result, never a shell interpolation.
+    const transport = async (url, options) => {
+      const input = Buffer.from(JSON.stringify({ path: new URL(url).pathname, method: options.method, body: options.body })).toString('base64');
+      const script = `const input=JSON.parse(Buffer.from(process.argv[1],'base64'));fetch('http://127.0.0.1:4096'+input.path,{method:input.method,headers:{Authorization:'Basic '+Buffer.from('opencode:'+process.env.OPENCODE_SERVER_PASSWORD).toString('base64'),'Content-Type':'application/json'},body:input.body,redirect:'error',signal:AbortSignal.timeout(240000)}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(()=>process.exit(1));`;
+      const result = JSON.parse(await execute('docker', ['exec', engine, 'node', '-e', script, input], { timeout: 245000, maxBytes: 2 * 1024 * 1024 }));
+      return new Response(result.body, { status: result.status });
+    };
+    adapter = new OpenCodeAdapter('http://127.0.0.1:4096', password, transport);
     let ready = false;
     for (let attempt = 0; attempt < 40 && !interrupted; attempt++) {
       try { const health = await adapter.health(); if (health.healthy && health.version === '1.19.0') { ready = true; break; } } catch { /* Bound startup wait. */ }

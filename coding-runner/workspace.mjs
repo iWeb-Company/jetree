@@ -21,11 +21,14 @@ async function boundedFile(root, relative) {
   if (!within(root, target)) throw new Error('PATH_NOT_ALLOWED');
   // Reject symlinks/junctions in every path component, not just the leaf.
   let cursor = root;
+  let leaf;
   for (const part of path.relative(root, target).split(path.sep)) {
     cursor = path.join(cursor, part); const info = await lstat(cursor);
     if (info.isSymbolicLink() || !within(root, await realpath(cursor))) throw new Error('LINK_NOT_ALLOWED');
+    leaf = info;
   }
-  const handle = await open(target, constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW));
+  if (!leaf?.isFile() || leaf.size > 1048576) throw new Error('FILE_LIMIT');
+  const handle = await open(target, constants.O_RDONLY | (process.platform === 'win32' ? 0 : constants.O_NOFOLLOW | constants.O_NONBLOCK));
   try {
     const before = await handle.stat(); if (!before.isFile() || before.size > 1048576) throw new Error('FILE_LIMIT');
     const data = await handle.readFile(); const after = await handle.stat();

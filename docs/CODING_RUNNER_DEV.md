@@ -18,7 +18,7 @@ El filtrado de patrones no garantiza detectar todos los secretos. Revisar la cop
 
 Node 22+, Git y Docker Desktop con contenedores Linux. La detección de esta PC encontró Node y Git, pero **no Docker ni WSL**. No se instalaron automáticamente.
 
-Instalar/configurar Docker implica requisitos de virtualización y puede requerir reiniciar Windows. Revisar las condiciones de licencia de Docker Desktop de la organización. Este prototipo no necesita publicar el puerto del motor: Docker lo vincula solo a `127.0.0.1` con una contraseña aleatoria por ejecución.
+Instalar/configurar Docker implica requisitos de virtualización y puede requerir reiniciar Windows. Revisar las condiciones de licencia de Docker Desktop de la organización. Este prototipo no publica ningún puerto del motor: el CLI transporta las solicitudes autenticadas mediante Docker exec hacia el loopback del contenedor, con una contraseña aleatoria por ejecución.
 
 ## Probar después del merge a dev
 

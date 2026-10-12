@@ -19,10 +19,11 @@ const execute=async(program,args,options)=>{
     const image=args.indexOf('jetree-code:opencode-1.19.0');args=[...args.slice(0,image),'--mount',`type=bind,source=${fixture},target=/ci,readonly`,...args.slice(image,image+1),'node','/ci/provider.mjs'];
   }
   const result=await command(program,args,options);
-  if(program==='docker'&&args[0]==='inspect'&&args.at(-1).endsWith('-engine')){
-    const engine=args.at(-1);
+  if(program==='docker'&&args[0]==='run'&&args.includes('--name')&&args[args.indexOf('--name')+1].endsWith('-engine')){
+    const engine=args[args.indexOf('--name')+1];
     await command('docker',['exec',engine,'node','-e',`const fs=require('fs');if(process.env.JETREE_CODE_API_KEY)process.exit(1);if(fs.existsSync('/workspace/.env')||fs.existsSync('/var/run/docker.sock'))process.exit(2);try{fs.writeFileSync('/opt/jetree-code/host-escape','bad');process.exit(3)}catch{};fetch('https://example.com',{signal:AbortSignal.timeout(2000)}).then(()=>process.exit(4),()=>process.exit(0));`]);checkedIsolation=true;
     const raw=JSON.parse(await command('docker',['inspect',engine]))[0];assert.equal(raw.HostConfig.Privileged,false);assert.equal(raw.HostConfig.ReadonlyRootfs,true);assert.equal(raw.Config.User,`${process.getuid()}:${process.getgid()}`);assert.equal(raw.Mounts.filter(item=>item.Type==='bind').length,1);
+    assert.ok(!raw.HostConfig.PortBindings || !Object.keys(raw.HostConfig.PortBindings).length);
   }
   return result;
 };
