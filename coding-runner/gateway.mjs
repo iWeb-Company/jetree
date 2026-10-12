@@ -46,4 +46,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const server = gateway({ provider: process.env.JETREE_CODE_PROVIDER, key: process.env.JETREE_CODE_API_KEY, token: process.env.JETREE_CODE_GATEWAY_TOKEN, model: process.env.JETREE_CODE_MODEL });
   server.listen(8080, '0.0.0.0');
   for (const signal of ['SIGINT','SIGTERM']) process.on(signal, () => { server.close(); server.closeAllConnections(); });
+  setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 8 * 60 * 1000).unref();
 }

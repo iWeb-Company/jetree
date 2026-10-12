@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ripgrep && 
 WORKDIR /opt/jetree-code
 COPY package.json package-lock.json ./
 RUN npm ci && npm cache clean --force
-COPY gateway.mjs ./
+COPY gateway.mjs engine.mjs ./
 # OpenCode's dynamic provider installer uses its cache. Ship the pinned provider
 # there so inference never needs npm/network access from the sandbox.
 RUN mkdir -p /home/node/.cache/opencode/bin /home/node/.cache/opencode/packages/@ai-sdk/openai-compatible@3.0.67 && cp package.json package-lock.json /home/node/.cache/opencode/packages/@ai-sdk/openai-compatible@3.0.67/ && cp -a node_modules /home/node/.cache/opencode/packages/@ai-sdk/openai-compatible@3.0.67/ && chown -R node:node /home/node/.cache
@@ -13,4 +13,4 @@ ENV PATH=/opt/jetree-code/node_modules/.bin:$PATH
 ENV OPENCODE_DISABLE_AUTOUPDATE=true OPENCODE_DISABLE_LSP_DOWNLOAD=true
 USER node
 WORKDIR /workspace
-CMD ["opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"]
+CMD ["node", "/opt/jetree-code/engine.mjs"]
