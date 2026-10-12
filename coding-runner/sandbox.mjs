@@ -8,7 +8,7 @@ import { providerTarget } from './gateway.mjs';
 
 export const IMAGE = 'jetree-code:opencode-1.19.0';
 export function isolationArgs({ name, network, uid = 1000, gid = 1000 }) {
-  return ['run', '-d', '--init', '--name', name, '--network', network, '--user', `${uid}:${gid}`, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m', '--tmpfs', `/home/node/.local:rw,nosuid,nodev,size=128m,uid=${uid},gid=${gid},mode=0700`, '--tmpfs', `/home/node/.config:rw,nosuid,nodev,size=16m,uid=${uid},gid=${gid},mode=0700`];
+  return ['run', '-d', '--init', '--name', name, '--network', network, '--user', `${uid}:${gid}`, '--env', 'HOME=/home/node', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m', '--tmpfs', `/home/node/.local:rw,nosuid,nodev,size=128m,uid=${uid},gid=${gid},mode=0700`, '--tmpfs', `/home/node/.config:rw,nosuid,nodev,size=16m,uid=${uid},gid=${gid},mode=0700`];
 }
 const envLine = (key, value) => { if (typeof value !== 'string' || /[\r\n\0]/.test(value)) throw new Error('ENV_INVALID'); return `${key}=${value}`; };
 export async function runSandbox({ output, prompt, provider, model, key, testCommand, execute = command }) {
