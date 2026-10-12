@@ -24,6 +24,10 @@ test('snapshot preserves dirty source, excludes credentials and ignores untracke
   await writeFile(path.join(f.output,'workspace','sum.cjs'),'agent edit');await writeFile(path.join(f.output,'workspace','new.txt'),'new');
   assert.equal(await readFile(path.join(f.project,'sum.cjs'),'utf8'),'human dirty edit');
   assert.deepEqual((await changes(f.output)).map(item=>[item.name,item.status]),[['sum.cjs','modified'],['new.txt','added']]);
+  await writeFile(path.join(f.project,'sum.cjs'),'later human edit');
+  const patches=await changes(f.output,true);assert.match(patches[0].diff,/-human dirty edit/);assert.match(patches[0].diff,/\+agent edit/);assert.doesNotMatch(patches[0].diff,/later human/);
+  assert.match(patches[1].diff,/--- \/dev\/null/);
+  await writeFile(path.join(f.output,'baseline','sum.cjs'),'tampered');await assert.rejects(changes(f.output,true),/BASELINE_CHANGED/);
 });
 test('snapshot rejects output in the source and refuses to overwrite another run',async t=>{
   const f=await fixture(t);await assert.rejects(prepare(f.project,path.join(f.project,'run')),/OUTPUT_MUST_BE_OUTSIDE_PROJECT/);

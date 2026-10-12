@@ -16,7 +16,7 @@ export function secretContent(data) {
   return /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----|\b(?:sk-(?:proj-|ant-api\d+-|or-v1-)?[A-Za-z0-9_-]{24,}|gsk_[A-Za-z0-9]{24,}|AIza[A-Za-z0-9_-]{30,}|gh[pousr]_[A-Za-z0-9]{30,})\b/.test(data.toString('utf8'));
 }
 async function boundedFile(root, relative) {
-  if (typeof relative !== 'string' || !relative || relative.includes('\0') || path.isAbsolute(relative)) throw new Error('PATH_NOT_ALLOWED');
+  if (typeof relative !== 'string' || !relative || /[\x00-\x1f\x7f]/.test(relative) || path.isAbsolute(relative)) throw new Error('PATH_NOT_ALLOWED');
   const target = path.resolve(root, relative);
   if (!within(root, target)) throw new Error('PATH_NOT_ALLOWED');
   // Reject symlinks/junctions in every path component, not just the leaf.
@@ -58,16 +58,28 @@ export async function prepare(project, output) {
   }
   await mkdir(destination, { mode: 0o700 });
   const workspace = path.join(destination, 'workspace'); await mkdir(workspace, { mode: 0o700 });
+  const baseline = path.join(destination, 'baseline'); await mkdir(baseline, { mode: 0o700 });
   for (const { name, data } of captured) {
     const target = path.resolve(workspace, name); if (!within(workspace, target)) throw new Error('PATH_NOT_ALLOWED');
     await mkdir(path.dirname(target), { recursive: true, mode: 0o700 }); await writeFile(target, data, { mode: 0o600, flag: 'wx' });
+    const original = path.join(baseline, name); await mkdir(path.dirname(original), { recursive: true, mode: 0o700 }); await writeFile(original, data, { mode: 0o600, flag: 'wx' });
   }
   const manifest = { version: 1, source: root, base, createdAt: new Date().toISOString(), files: captured.map(({ name, data }) => ({ name, hash: hash(data), bytes: data.length })), skipped };
   await writeFile(path.join(destination, 'manifest.json'), JSON.stringify(manifest, null, 2), { mode: 0o600, flag: 'wx' });
   await writeFile(path.join(destination, 'status.json'), JSON.stringify({ state: 'prepared' }), { mode: 0o600, flag: 'wx' });
   return { output: destination, files: captured.length, skipped, base };
 }
-export async function changes(output) {
+function unified(name, before, after) {
+  if ((before?.length || 0) + (after?.length || 0) > 32768 || before?.includes(0) || after?.includes(0) || (before && secretContent(before)) || (after && secretContent(after))) return { diffOmitted: 'Large, binary or sensitive file; review locally.' };
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let oldText; let newText; try { oldText = before ? decoder.decode(before) : ''; newText = after ? decoder.decode(after) : ''; } catch { return { diffOmitted: 'Binary file; review locally.' }; }
+  const lines = text => text ? text.split('\n').slice(0, text.endsWith('\n') ? -1 : undefined) : [];
+  const oldLines = lines(oldText); const newLines = lines(newText);
+  if (oldLines.length + newLines.length > 1000) return { diffOmitted: 'Too many lines; review locally.' };
+  const section = (items, text, prefix) => items.map((line,index) => prefix + line + '\n' + (index === items.length - 1 && !text.endsWith('\n') ? '\\ No newline at end of file\n' : '')).join('');
+  return { diff: `--- ${before ? JSON.stringify('a/' + name) : '/dev/null'}\n+++ ${after ? JSON.stringify('b/' + name) : '/dev/null'}\n@@ -${oldLines.length ? 1 : 0},${oldLines.length} +${newLines.length ? 1 : 0},${newLines.length} @@\n` + section(oldLines, oldText, '-') + section(newLines, newText, '+') };
+}
+export async function changes(output, includeDiff = false) {
   const manifest = JSON.parse(await readFile(path.join(output, 'manifest.json'), 'utf8'));
   const root = await realpath(path.join(output, 'workspace')); const current = new Map(); let count = 0; let total = 0;
   async function visit(directory) {
@@ -92,5 +104,17 @@ export async function changes(output) {
     else if (present.hash !== file.hash) result.push({ name: file.name, status: 'modified', ...present });
   }
   for (const [name, present] of current) result.push({ name, status: 'added', ...present });
+  if (includeDiff) {
+    const baseline = await realpath(path.join(output, 'baseline')); let remaining = 256 * 1024;
+    for (const item of result) {
+      const before = item.status === 'added' ? null : await boundedFile(baseline, item.name);
+      const expected = manifest.files.find(file => file.name === item.name);
+      if (before && hash(before) !== expected?.hash) throw new Error('BASELINE_CHANGED');
+      const after = item.status === 'deleted' ? null : await boundedFile(root, item.name);
+      const patch = unified(item.name, before, after);
+      if (patch.diff && Buffer.byteLength(patch.diff) > remaining) item.diffOmitted = 'Report limit; review locally.';
+      else { Object.assign(item, patch); remaining -= patch.diff ? Buffer.byteLength(patch.diff) : 0; }
+    }
+  }
   return result;
 }

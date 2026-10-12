@@ -36,7 +36,7 @@ async function main() {
   if (!input['--output']) throw new Error('OUTPUT_REQUIRED');
   let result;
   if (action === 'prepare') { if (!input['--project']) throw new Error('PROJECT_REQUIRED'); result = await prepare(input['--project'], input['--output']); }
-  else if (action === 'diff') result = await changes(input['--output']);
+  else if (action === 'diff') result = await changes(input['--output'], true);
   else if (action === 'status') result = JSON.parse(await readFile(path.join(input['--output'],'status.json'),'utf8'));
   else if (action === 'run') {
     if (!input['--allow-inference']) throw new Error('INFERENCE_AUTHORIZATION_REQUIRED');

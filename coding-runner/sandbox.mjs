@@ -65,7 +65,7 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     try { const logs = await execute('docker', ['exec', '-w', '/workspace', engine, 'sh', '-lc', testCommand], { timeout: 120000, maxBytes: 256 * 1024 }); verification = { command: testCommand, exitCode: 0, output: logs }; }
     catch (error) { verification = { command: testCommand, exitCode: error.exitCode ?? null, output: error.output || error.message }; }
     if (interrupted) throw new Error('RUN_INTERRUPTED');
-    const files = await changes(root);
+    const files = await changes(root, true);
     const report = { state: verification.exitCode === 0 ? 'ready_for_review' : 'tests_failed', session, provider, model, files, verification,
       summary: message.parts.filter(part => part.type === 'text').map(part => part.text).join('\n').slice(0, 6000), finishedAt: new Date().toISOString(), originalModified: false };
     await writeFile(path.join(root, 'report.json'), JSON.stringify(report, null, 2), { mode: 0o600, flag: 'wx' }); await save({ state: report.state, session }); return report;
