@@ -12,7 +12,7 @@ export function isolationArgs({ name, network, uid = 1000, gid = 1000 }) {
   return ['run', '-d', '--init', '--name', name, '--network', network, '--user', `${uid}:${gid}`, '--env', 'HOME=/home/node', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m', '--tmpfs', `/home/node/.local:rw,nosuid,nodev,size=128m,uid=${uid},gid=${gid},mode=0700`, '--tmpfs', `/home/node/.config:rw,nosuid,nodev,size=16m,uid=${uid},gid=${gid},mode=0700`];
 }
 const envLine = (key, value) => { if (typeof value !== 'string' || /[\r\n\0]/.test(value)) throw new Error('ENV_INVALID'); return `${key}=${value}`; };
-export async function runSandbox({ output, prompt, provider, model, key, testCommand, execute = command }) {
+export async function runSandbox({ output, prompt, provider, model, key, testCommand, execute = command, signal }) {
   providerTarget(provider); engineConfig(model, 'validate');
   if (!key || /[\r\n\0]/.test(key) || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000 || typeof testCommand !== 'string' || !testCommand.trim() || testCommand.length > 1000) throw new Error('RUN_INPUT_INVALID');
   const root = await realpath(output); const workspace = await realpath(path.join(root, 'workspace'));
@@ -32,6 +32,8 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
   const save = data => writeFile(path.join(root, 'status.json'), JSON.stringify(data, null, 2), { mode: 0o600 });
   let interrupted = false; let session; let adapter; let resourcesStarted = false;
   const interrupt = () => { interrupted = true; if (session && adapter) adapter.abort(session).catch(() => {}); };
+  if (signal?.aborted) throw new Error('RUN_INTERRUPTED');
+  signal?.addEventListener('abort',interrupt,{once:true});
   process.once('SIGINT', interrupt); process.once('SIGTERM', interrupt);
   try {
     await save({ state: 'starting', startedAt: new Date().toISOString() });
@@ -81,6 +83,7 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
   }
   finally {
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
+    signal?.removeEventListener('abort',interrupt);
     if (adapter && session) await adapter.abort(session).catch(() => {});
     if (resourcesStarted) {
       await execute('docker', ['rm', '-f', engine, broker]).catch(() => {});

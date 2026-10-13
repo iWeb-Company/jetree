@@ -6,19 +6,22 @@ import { command } from './process.mjs';
 import { prepare, changes } from './workspace.mjs';
 import { runSandbox, IMAGE } from './sandbox.mjs';
 import { doctor } from './doctor.mjs';
+import { connectRunner,listenRunner } from './runner-client.mjs';
 
-const usage = `Jetree code — experimento local, sin conexión al panel todavía.
+const usage = `Jetree code — ejecutor experimental para copias locales y sesiones del panel.
   node coding-runner/cli.mjs doctor
   node coding-runner/cli.mjs build
   node coding-runner/cli.mjs prepare --project <raíz Git> --output <carpeta nueva fuera del proyecto>
   node coding-runner/cli.mjs run --output <copia> --provider groq|openrouter|deepseek --model <ID> --prompt <pedido> --test <comando> --allow-inference
   node coding-runner/cli.mjs status --output <copia>
   node coding-runner/cli.mjs diff --output <copia>
+  node coding-runner/cli.mjs connect --server <https://Jetree> --code <código del panel> --config <config local JSON> [--connection <directorio privado>]
+  node coding-runner/cli.mjs listen [--connection <directorio privado>]
 run requiere JETREE_CODE_API_KEY en el entorno. Edita y ejecuta dentro de una copia aislada; envía contexto al proveedor elegido. No modifica ni publica el proyecto original.`;
 export function options(args) {
   const result = {};
   for (let i = 0; i < args.length; i++) {
-    const key = args[i]; if (!/^--(?:project|output|provider|model|prompt|test|allow-inference)$/.test(key) || key in result) throw new Error('CLI_ARGUMENT_INVALID');
+    const key = args[i]; if (!/^--(?:project|output|provider|model|prompt|test|allow-inference|server|code|config|connection)$/.test(key) || key in result) throw new Error('CLI_ARGUMENT_INVALID');
     if (key === '--allow-inference') result[key] = true;
     else { const value = args[++i]; if (!value || value.startsWith('--')) throw new Error('CLI_ARGUMENT_INVALID'); result[key] = value; }
   }
@@ -27,6 +30,8 @@ export function options(args) {
 async function main() {
   const [action, ...args] = process.argv.slice(2); const input = options(args);
   if (!action || action === 'help') { console.log(usage); return; }
+  if(action==='connect'){console.log(JSON.stringify(await connectRunner({server:input['--server'],code:input['--code'],config:input['--config'],connection:input['--connection']}),null,2));return;}
+  if(action==='listen'){await listenRunner({connection:input['--connection']});return;}
   if (action === 'doctor') {
     const result = await doctor();
     console.log(JSON.stringify(result, null, 2)); if (!result.node || !result.git || !result.dockerLinux || !result.image) process.exitCode = 1; return;
