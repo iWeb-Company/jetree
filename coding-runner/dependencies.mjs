@@ -16,7 +16,7 @@ export function validateNpmLock(pkg, lock) {
     for (const group of ['dependencies','devDependencies','optionalDependencies','peerDependencies']) {
       if (!object[group]) continue;
       for (const [name, value] of Object.entries(object[group])) {
-        if (!/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(name) || typeof value !== 'string' || !/^[0-9xX*~^<>=| .+-]+$/.test(value)) throw new Error('DEPENDENCY_SOURCE_UNSUPPORTED');
+        if (!/^(@[a-z0-9._-]+\/)?[a-z0-9._-]+$/i.test(name) || typeof value !== 'string' || !/^[A-Za-z0-9*~^<>=| .+-]+$/.test(value)) throw new Error('DEPENDENCY_SOURCE_UNSUPPORTED');
       }
     }
   };

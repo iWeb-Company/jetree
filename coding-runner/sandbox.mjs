@@ -112,7 +112,7 @@ export function providerDiagnostics(logs) {
     try {
       const event = JSON.parse(line.slice('JETREE_DIAGNOSTIC '.length));
       if (event.code === 'PROVIDER_TRANSPORT_ERROR') return [{ code: event.code }];
-      if (event.code === 'PROVIDER_HTTP_ERROR' && Number.isInteger(event.status) && event.status >= 100 && event.status <= 599) return [{ code: event.code, status: event.status, ...(['UNKNOWN','RATE_LIMIT','TOOL_GENERATION_FAILED','TOOL_SCHEMA_INVALID','TOOL_REQUEST_INVALID','PARAMETER_INVALID','MESSAGES_INVALID','MODEL_INVALID','TOKEN_LIMIT','CACHE_CONTROL_UNSUPPORTED','REASONING_CONTENT_UNSUPPORTED','CONTENT_INVALID','ROLE_INVALID'].includes(event.category) ? { category: event.category } : {}) }];
+      if (event.code === 'PROVIDER_HTTP_ERROR' && Number.isInteger(event.status) && event.status >= 100 && event.status <= 599) return [{ code: event.code, status: event.status, ...(['UNKNOWN','RATE_LIMIT','REQUEST_TOO_LARGE','TOOL_GENERATION_FAILED','TOOL_SCHEMA_INVALID','TOOL_REQUEST_INVALID','PARAMETER_INVALID','MESSAGES_INVALID','MODEL_INVALID','TOKEN_LIMIT','CACHE_CONTROL_UNSUPPORTED','REASONING_CONTENT_UNSUPPORTED','CONTENT_INVALID','ROLE_INVALID'].includes(event.category) ? { category: event.category } : {}) }];
     } catch { /* Ignore malformed or untrusted log entries. */ }
     return [];
   }).slice(-10);

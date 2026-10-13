@@ -31,6 +31,17 @@ test('snapshot preserves dirty source, excludes credentials and ignores untracke
   assert.match(patches[1].diff,/--- \/dev\/null/);
   await writeFile(path.join(f.output,'baseline','sum.cjs'),'tampered');await assert.rejects(changes(f.output,true),/BASELINE_CHANGED/);
 });
+test('snapshot skips tracked desktop installers and debug binaries before applying file limits',async t=>{
+  const f=await fixture(t);
+  await writeFile(path.join(f.project,'installer.exe'),Buffer.alloc(1048577));
+  await writeFile(path.join(f.project,'debug.pdb'),Buffer.alloc(1048577));
+  await command('git',['-C',f.project,'add','installer.exe','debug.pdb']);
+  const snapshot=await prepare(f.project,f.output);
+  assert.ok(snapshot.skipped.includes('installer.exe'));assert.ok(snapshot.skipped.includes('debug.pdb'));
+  assert.equal(snapshot.files,1);await assert.rejects(readFile(path.join(f.output,'workspace','installer.exe')),/ENOENT/);
+  await mkdir(path.join(f.output,'workspace','dist'));await writeFile(path.join(f.output,'workspace','dist','bundle.js'),Buffer.alloc(1048577));
+  assert.deepEqual(await changes(f.output),[]);
+});
 test('snapshot rejects output in the source and refuses to overwrite another run',async t=>{
   const f=await fixture(t);await assert.rejects(prepare(f.project,path.join(f.project,'run')),/OUTPUT_MUST_BE_OUTSIDE_PROJECT/);
   await prepare(f.project,f.output);await assert.rejects(prepare(f.project,f.output),/EEXIST/);
@@ -83,6 +94,14 @@ test('provider diagnostics retain only bounded codes and HTTP statuses, never ar
   const logs=['secret raw error','JETREE_DIAGNOSTIC '+JSON.stringify({code:'PROVIDER_HTTP_ERROR',status:429,key:'private-key',body:'private-body'}),'JETREE_DIAGNOSTIC {broken','JETREE_DIAGNOSTIC '+JSON.stringify({code:'arbitrary-private-message',status:401}),'JETREE_DIAGNOSTIC '+JSON.stringify({code:'PROVIDER_TRANSPORT_ERROR',message:'private-detail'})].join('\n');
   assert.deepEqual(providerDiagnostics(logs),[{code:'PROVIDER_HTTP_ERROR',status:429},{code:'PROVIDER_TRANSPORT_ERROR'}]);
   assert.equal(providerDiagnostics(Array(20).fill('JETREE_DIAGNOSTIC {"code":"PROVIDER_HTTP_ERROR","status":413}').join('\n')).length,10);
+});
+test('oversized provider requests remain non-retryable 413 responses without leaking upstream bodies',async t=>{
+  const events=[];
+  const server=gateway({provider:'groq',key:'secret',token:'token',model:'demo',onDiagnostic:event=>events.push(event),fetcher:async()=>new Response('private model account limit',{status:413})});
+  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>{server.close();server.closeAllConnections();});
+  const response=await fetch('http://127.0.0.1:'+server.address().port+'/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer token'},body:JSON.stringify({model:'demo',messages:[]})});
+  assert.equal(response.status,413);assert.doesNotMatch(await response.text(),/private|account|secret/);
+  assert.deepEqual(events,[{code:'PROVIDER_HTTP_ERROR',status:413,category:'REQUEST_TOO_LARGE'}]);
 });
 
 test('Groq message adapter removes engine metadata, keeps tool references and rejects non-text parts',async()=>{

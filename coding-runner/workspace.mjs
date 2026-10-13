@@ -11,7 +11,7 @@ export function within(root, target) {
   return relative === '' || (!relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative));
 }
 export function excluded(name) {
-  return name.split(/[\\/]/).some(part => /^\.(?:git|opencode|ssh|aws|azure|gnupg|jetree)(?:$|-)|^node_modules$|^\.env(?:$|\.)|^\.(?:npmrc|netrc|pypirc)$|^(?:opencode\.jsonc?|auth\.json|credentials(?:\..*)?|secrets?(?:\..*)?|id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx|dpapi)$/i.test(part));
+  return name.split(/[\\/]/).some(part => /^\.(?:git|opencode|ssh|aws|azure|gnupg|jetree)(?:$|-)|^(?:node_modules|dist|target|\.next)$|^\.env(?:$|\.)|^\.(?:npmrc|netrc|pypirc)$|^(?:opencode\.jsonc?|auth\.json|credentials(?:\..*)?|secrets?(?:\..*)?|id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx|dpapi|exe|msi|pdb|dll|so|dylib)$/i.test(part));
 }
 export function secretContent(data) {
   return /-----BEGIN (?:[A-Z ]+ )?PRIVATE KEY-----|\b(?:sk-(?:proj-|ant-api\d+-|or-v1-)?[A-Za-z0-9_-]{24,}|gsk_[A-Za-z0-9]{24,}|AIza[A-Za-z0-9_-]{30,}|gh[pousr]_[A-Za-z0-9]{30,})\b/.test(data.toString('utf8'));

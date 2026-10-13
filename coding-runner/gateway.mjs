@@ -17,6 +17,7 @@ export function groqMessages(messages) {
 }
 export async function errorCategory(upstream) {
   if (upstream.status === 429) { await upstream.body?.cancel(); return 'RATE_LIMIT'; }
+  if (upstream.status === 413) { await upstream.body?.cancel(); return 'REQUEST_TOO_LARGE'; }
   const reader = upstream.body?.getReader(); if (!reader) return 'UNKNOWN';
   const chunks = []; let size = 0;
   try {
@@ -56,7 +57,7 @@ export function gateway({ provider, key, token, model, limit = 40, fetcher = fet
     try {
       const upstream = await fetcher(target, { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(data), redirect: 'error', signal: abort.signal });
       // Never return provider error bodies: they may contain credentials or account information.
-      if (!upstream.ok || !upstream.body) { const category = await errorCategory(upstream); onDiagnostic({ code: 'PROVIDER_HTTP_ERROR', status: upstream.status, category }); return deny(upstream.status === 429 ? 429 : 502); }
+      if (!upstream.ok || !upstream.body) { const category = await errorCategory(upstream); onDiagnostic({ code: 'PROVIDER_HTTP_ERROR', status: upstream.status, category }); return deny(upstream.status === 429 || upstream.status === 413 ? upstream.status : 502); }
       response.writeHead(200, { 'Content-Type': data.stream ? 'text/event-stream' : 'application/json', 'Cache-Control': 'no-store' });
       let size = 0; const reader = upstream.body.getReader();
       try { while (true) { const chunk = await reader.read(); if (chunk.done) break;
