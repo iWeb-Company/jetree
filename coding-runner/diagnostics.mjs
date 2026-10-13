@@ -15,11 +15,12 @@ export function engineFailure(message) {
   return null;
 }
 export function failureCode(diagnostics, fallback) {
-  if (fallback === 'COMMAND_FAILED:docker') return 'DOCKER_COMMAND_FAILED';
   const last = diagnostics.filter(item => item.code === 'PROVIDER_HTTP_ERROR').at(-1);
   if (last?.status === 401 || last?.status === 403) return 'PROVIDER_AUTH_FAILED';
   if (last?.status === 429) return 'PROVIDER_RATE_LIMIT';
+  if (last?.status === 413) return 'PROVIDER_REQUEST_TOO_LARGE';
   if (last?.category === 'TOKEN_LIMIT') return 'ENGINE_CONTEXT_LIMIT';
   if (last?.category === 'TOOL_GENERATION_FAILED') return 'PROVIDER_TOOL_GENERATION_FAILED';
+  if (fallback === 'COMMAND_FAILED:docker') return 'DOCKER_COMMAND_FAILED';
   return /^[A-Z_]{1,80}$/.test(fallback) ? fallback : 'RUN_FAILED';
 }

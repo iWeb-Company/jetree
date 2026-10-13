@@ -53,7 +53,7 @@ El panel solicita autorización para enviar contexto al proveedor y almacenar di
 
 La configuración local puede autorizar `"dependencies": "npm-ci"` dentro de un proyecto; por defecto usa `"none"`. La web no puede activar esa política ni cambiarla por tarea. Para cambiar una configuración ya vinculada, revocá el ejecutor y vinculá una nueva configuración; no edites el token manualmente.
 
-El piloto admite `package-lock.json` versión 3, hasta 1.000 entradas, dependencias públicas con integridad SHA-512 y tarballs HTTPS de `registry.npmjs.org`. No admite workspaces, paquetes privados, fuentes Git/file/URL, overrides ni configuración `.npmrc`. Algunos rangos o árboles válidos de npm pueden quedar fuera de este subconjunto inicial. No soporta preparación de Python, pnpm o yarn todavía.
+El piloto admite `package-lock.json` versión 3, hasta 1.000 entradas, dependencias públicas con integridad SHA-512 y tarballs HTTPS de `registry.npmjs.org`. Los rangos con prereleases (por ejemplo beta) y tags son aceptados; las versiones efectivas y su integridad siguen fijadas en el lockfile. No admite workspaces, paquetes privados, fuentes Git/file/URL, overrides ni configuración `.npmrc`. Algunos rangos o árboles válidos de npm pueden quedar fuera de este subconjunto inicial. No soporta preparación de Python, pnpm o yarn todavía.
 
 Antes de iniciar el agente, instala con `npm ci --ignore-scripts --no-audit --no-fund` en un contenedor sin claves, que recibe solamente package.json y el lockfile. Tiene acceso de red para descargar paquetes; no recibe código del proyecto ni credenciales de npm. Los scripts de instalación quedan desactivados. Dependencias y caché tienen límites temporales de 512 MiB y 256 MiB respectivamente. No se reutiliza node_modules del host.
 

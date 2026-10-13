@@ -46,6 +46,8 @@ test('engine failures keep only allowlisted diagnostics and distinguish empty an
   assert.equal(engineFailure({parts:[]}).code,'ENGINE_EMPTY_RESPONSE');
   assert.equal(engineFailure({parts:[{type:'text',text:'done'}]}),null);
   assert.equal(failureCode([{code:'PROVIDER_HTTP_ERROR',status:429}], 'ENGINE_TASK_FAILED'),'PROVIDER_RATE_LIMIT');
+  assert.equal(failureCode([{code:'PROVIDER_HTTP_ERROR',status:413}], 'COMMAND_FAILED:docker'),'PROVIDER_REQUEST_TOO_LARGE');
+  assert.equal(failureCode([{code:'PROVIDER_HTTP_ERROR',status:429}], 'COMMAND_FAILED:docker'),'PROVIDER_RATE_LIMIT');
 });
 test('cancellation interrupts a running command instead of waiting for its timeout', async () => {
   const controller = new AbortController();
@@ -58,6 +60,7 @@ test('npm dependency policy rejects arbitrary sources, workspaces and changed ca
   const entry = {version:'7.0.0',resolved:'https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz',integrity:'sha512-'+'a'.repeat(86)+'=='};
   const lock = {lockfileVersion:3,packages:{'':pkg,'node_modules/is-number':entry}};
   validateNpmLock(pkg,lock); assert.equal(dependencyPolicy(undefined),'none'); assert.throws(()=>dependencyPolicy('shell'),/POLICY_INVALID/);
+  validateNpmLock({dependencies:{'is-number':'^7.0.0-beta.2'}},{...lock,packages:{...lock.packages,'node_modules/is-number':{...entry,version:'7.0.0-beta.2',dependencies:{'is-number':'latest'}}}});
   for(const resolved of ['https://evil.invalid/x.tgz','file:/etc','https://registry.npmjs.org/x.tgz?token=secret','https://user:secret@registry.npmjs.org/x.tgz']) assert.throws(()=>validateNpmLock(pkg,{...lock,packages:{...lock.packages,'node_modules/is-number':{...entry,resolved}}}),/SOURCE_UNSUPPORTED/);
   assert.throws(()=>validateNpmLock({dependencies:{evil:'git+https://evil.invalid'}},lock),/SOURCE_UNSUPPORTED/);
   assert.throws(()=>validateNpmLock({...pkg,workspaces:['*']},lock),/LOCK_UNSUPPORTED/);

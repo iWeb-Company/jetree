@@ -5,7 +5,7 @@ El CLI independiente usa OpenCode como motor. La pestaña Código ya permite ini
 ## Qué hace
 
 - Diagnostica Node 22+, Git, Docker con contenedores Linux y la imagen del ejecutor.
-- Prepara una copia de los archivos seguidos por Git, incluyendo sus modificaciones locales. Omite archivos sin seguimiento, submódulos, configuración de OpenCode, archivos de credenciales habituales y patrones conocidos de claves. Rechaza enlaces simbólicos/junctions y rutas fuera de la raíz. Límites: 2.000 archivos, 1 MiB por archivo, 20 MiB total.
+- Prepara una copia de los archivos seguidos por Git, incluyendo sus modificaciones locales. Omite archivos sin seguimiento, submódulos, configuración de OpenCode, archivos de credenciales habituales y patrones conocidos de claves. También omite directorios node_modules/dist/target/.next y binarios exe/msi/pdb/dll/so/dylib, tanto al copiar como al revisar resultados: instaladores y builds no entran en el contexto ni en el diff. Rechaza enlaces simbólicos/junctions y rutas fuera de la raíz. Límites: 2.000 archivos, 1 MiB por archivo, 20 MiB total. Si el proyecto utiliza uno de esos nombres para código fuente, esta política inicial lo omite y debe revisarse antes de usar ese proyecto.
 - Trabaja sobre esa copia: no aplica cambios al origen, no hace push, PR, merge ni deploy.
 - Ejecuta OpenCode 1.19.0 en un contenedor Linux sin privilegios, sin socket Docker, con filesystem base de solo lectura y límites de procesos, memoria y CPU.
 - El contenedor de código solo tiene una red interna hacia el gateway. La clave real vive en otro contenedor y no se monta en la copia ni se inyecta al motor. El gateway fija destino y modelo y permite hasta 40 solicitudes, con salida de hasta 4.096 tokens cada una. Ese límite no es un tope monetario.
