@@ -71,7 +71,14 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     const report = { state: verification.exitCode === 0 ? 'ready_for_review' : 'tests_failed', session, provider, model, files, verification,
       summary: message.parts.filter(part => part.type === 'text').map(part => part.text).join('\n').slice(0, 6000), finishedAt: new Date().toISOString(), originalModified: false };
     await writeFile(path.join(root, 'report.json'), JSON.stringify(report, null, 2), { mode: 0o600, flag: 'wx' }); await save({ state: report.state, session }); return report;
-  } catch (error) { await save({ state: interrupted ? 'interrupted' : 'failed', session, error: /^[A-Z_:a-z-]+$/.test(error.message) ? error.message : 'RUN_FAILED', retry: 'Create a new snapshot; never automatically replay this run.' }); throw error; }
+  } catch (error) {
+    let diagnostics = [];
+    if (resourcesStarted) {
+      const logs = await execute('docker', ['logs', '--tail', '100', broker], { timeout: 10000, maxBytes: 65536 }).catch(() => '');
+      diagnostics = providerDiagnostics(logs);
+    }
+    await save({ state: interrupted ? 'interrupted' : 'failed', session, error: /^[A-Z_:a-z-]+$/.test(error.message) ? error.message : 'RUN_FAILED', diagnostics, retry: 'Create a new snapshot; never automatically replay this run.' }); throw error;
+  }
   finally {
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     if (adapter && session) await adapter.abort(session).catch(() => {});
@@ -81,4 +88,16 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     }
     for (const file of [brokerEnv, engineEnv]) await unlink(file).catch(() => {});
   }
+}
+
+export function providerDiagnostics(logs) {
+  return String(logs).split('\n').flatMap(line => {
+    if (!line.startsWith('JETREE_DIAGNOSTIC ')) return [];
+    try {
+      const event = JSON.parse(line.slice('JETREE_DIAGNOSTIC '.length));
+      if (event.code === 'PROVIDER_TRANSPORT_ERROR') return [{ code: event.code }];
+      if (event.code === 'PROVIDER_HTTP_ERROR' && Number.isInteger(event.status) && event.status >= 100 && event.status <= 599) return [{ code: event.code, status: event.status, ...(['UNKNOWN','RATE_LIMIT','TOOL_GENERATION_FAILED','TOOL_SCHEMA_INVALID','TOOL_REQUEST_INVALID','PARAMETER_INVALID','MESSAGES_INVALID','MODEL_INVALID','TOKEN_LIMIT','CACHE_CONTROL_UNSUPPORTED','REASONING_CONTENT_UNSUPPORTED','CONTENT_INVALID','ROLE_INVALID'].includes(event.category) ? { category: event.category } : {}) }];
+    } catch { /* Ignore malformed or untrusted log entries. */ }
+    return [];
+  }).slice(-10);
 }

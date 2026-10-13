@@ -2,6 +2,7 @@ export function engineConfig(model, gatewayToken) {
   if (typeof model !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9/_.:-]{0,150}$/.test(model)) throw new Error('MODEL_INVALID');
   return {
     model: 'jetree/' + model, small_model: 'jetree/' + model, enabled_providers: ['jetree'], share: 'disabled', autoupdate: false, plugin: [], mcp: {}, lsp: false, formatter: false,
+    agent: { build: { prompt: 'You are a coding agent working only in /workspace. Inspect the relevant files, make the requested minimal change, and run the tests. Do not modify tests unless explicitly asked. Never publish or access external directories. Summarize the change and test result.', tools: { '*': false, bash: true, read: true, edit: true } } },
     provider: { jetree: { npm: '@ai-sdk/openai-compatible@3.0.67', name: 'Jetree isolated gateway', options: { baseURL: 'http://broker:8080/v1', apiKey: gatewayToken }, models: { [model]: { name: model, limit: { context: 16000, output: 4096 } } } } },
     permission: { '*': 'deny', read: 'allow', glob: 'allow', grep: 'allow', edit: 'allow', bash: 'allow', external_directory: 'deny', doom_loop: 'deny' },
   };

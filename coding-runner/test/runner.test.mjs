@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { command } from '../process.mjs';
 import { prepare, changes, within, excluded } from '../workspace.mjs';
-import { gateway, providerTarget } from '../gateway.mjs';
+import { gateway, providerTarget, groqMessages, errorCategory } from '../gateway.mjs';
 import { engineConfig, OpenCodeAdapter } from '../opencode.mjs';
-import { isolationArgs, runSandbox } from '../sandbox.mjs';
+import { isolationArgs, runSandbox, providerDiagnostics } from '../sandbox.mjs';
 import { options } from '../cli.mjs';
 import { ensurePrivateDirectory } from '../private-directory.mjs';
 import { doctor } from '../doctor.mjs';
@@ -72,9 +72,24 @@ test('gateway authenticates, pins destination/model, strips arbitrary parameters
   assert.equal((await send('/v1/chat/completions',{model:'demo',messages:[]})).status,429);
 });
 test('gateway does not expose upstream authentication errors or follow redirects',async t=>{
-  const server=gateway({provider:'openrouter',key:'secret',token:'token',model:'demo',fetcher:async(_,options)=>{assert.equal(options.redirect,'error');return new Response('secret leaked here',{status:401});}});
+  const events=[];
+  const server=gateway({provider:'openrouter',key:'secret',token:'token',model:'demo',onDiagnostic:event=>events.push(event),fetcher:async(_,options)=>{assert.equal(options.redirect,'error');return new Response('secret leaked here',{status:401});}});
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>{server.close();server.closeAllConnections();});
   const response=await fetch('http://127.0.0.1:'+server.address().port+'/v1/chat/completions',{method:'POST',headers:{Authorization:'Bearer token'},body:JSON.stringify({model:'demo',messages:[]})});assert.equal(response.status,502);assert.doesNotMatch(await response.text(),/secret/);
+  assert.deepEqual(events,[{code:'PROVIDER_HTTP_ERROR',status:401,category:'UNKNOWN'}]);
+});
+
+test('provider diagnostics retain only bounded codes and HTTP statuses, never arbitrary log fields',()=>{
+  const logs=['secret raw error','JETREE_DIAGNOSTIC '+JSON.stringify({code:'PROVIDER_HTTP_ERROR',status:429,key:'private-key',body:'private-body'}),'JETREE_DIAGNOSTIC {broken','JETREE_DIAGNOSTIC '+JSON.stringify({code:'arbitrary-private-message',status:401}),'JETREE_DIAGNOSTIC '+JSON.stringify({code:'PROVIDER_TRANSPORT_ERROR',message:'private-detail'})].join('\n');
+  assert.deepEqual(providerDiagnostics(logs),[{code:'PROVIDER_HTTP_ERROR',status:429},{code:'PROVIDER_TRANSPORT_ERROR'}]);
+  assert.equal(providerDiagnostics(Array(20).fill('JETREE_DIAGNOSTIC {"code":"PROVIDER_HTTP_ERROR","status":413}').join('\n')).length,10);
+});
+
+test('Groq message adapter removes engine metadata, keeps tool references and rejects non-text parts',async()=>{
+  assert.deepEqual(groqMessages([{role:'system',content:[{type:'text',text:'instructions',cache_control:{type:'ephemeral'}}],reasoning:'metadata'},{role:'assistant',content:null,tool_calls:[{id:'call_1',type:'function',function:{name:'bash',arguments:'{}'}}],reasoning_content:'private'},{role:'tool',content:'done',tool_call_id:'call_1'}]),[{role:'system',content:'instructions'},{role:'assistant',content:null,tool_calls:[{id:'call_1',type:'function',function:{name:'bash',arguments:'{}'}}]},{role:'tool',content:'done',tool_call_id:'call_1'}]);
+  assert.throws(()=>groqMessages([{role:'user',content:[{type:'image_url',image_url:{url:'private'}}]}]),/GROQ_TEXT_ONLY/);
+  assert.equal(await errorCategory(Response.json({error:{code:'tool_use_failed',message:'private details'}})),'TOOL_GENERATION_FAILED');
+  assert.equal(await errorCategory(Response.json({error:{message:'messages cache_control unsupported private'}})),'CACHE_CONTROL_UNSUPPORTED');
 });
 test('OpenCode adapter uses authenticated loopback, actual model and bounded routes',async()=>{
   const calls=[];const adapter=new OpenCodeAdapter('http://127.0.0.1:4096','private',async(url,options)=>{calls.push({url,options});return Response.json({id:'ses_Test123'});});
