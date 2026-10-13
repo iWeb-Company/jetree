@@ -54,6 +54,8 @@ node coding-runner/cli.mjs diff --output "C:\JetreeRuns\prueba-01"
 
 Transportes iniciales: `groq`, `openrouter`, `deepseek`, con el modelo compatible elegido y API key de esa cuenta. Que un transporte esté implementado no significa que ya haya pasado una evaluación real con todos sus modelos. No hay cambio automático de proveedor. Google, Claude y OpenAI tendrán adaptadores posteriores: no se presentan como soportados en este piloto.
 
+El piloto usa instrucciones breves y únicamente las herramientas bash, read y edit para reducir el contexto enviado. En Groq adapta los mensajes al contrato de chat: conserva roles, texto y referencias de llamadas a herramientas, elimina metadatos del motor y rechaza partes que no sean texto. Los fallos conservan en `status.json` códigos HTTP y categorías permitidas; nunca guardan cuerpos de error del proveedor. Un 429 indica un límite de uso, sin garantizar que esperar lo resuelva.
+
 `--allow-inference` autoriza enviar contexto al proveedor e implementar/ejecutar código **en la copia aislada** durante esta prueba. La clave no se comparte por chat ni con el proyecto. El proceso permanece en primer plano; cerrar la terminal puede interrumpirlo. No hay todavía login de Jetree ni recuperación distribuida.
 
 ## Validación
@@ -61,6 +63,8 @@ Transportes iniciales: `groq`, `openrouter`, `deepseek`, con el modelo compatibl
 Tests locales comprueban preservación de cambios humanos, exclusiones, límites de rutas, junctions, bloqueo de sobrescrituras, gateway autenticado y límites del adaptador.
 
 GitHub Actions construye la imagen fijada y usa **OpenCode real con un proveedor simulado**, sin claves externas. El motor solicita su herramienta bash, cambia un archivo dentro del contenedor y el ejecutor corre un test real. También verifica que el original quede intacto, el motor no reciba la API key, no pueda escribir el runtime ni acceder directamente a Internet, y que no se repita el trabajo. Esto valida transporte/herramientas/aislamiento básico; **no es una prueba de calidad de ningún modelo real**.
+
+El 13 de octubre de 2026 se verificó localmente Groq con `openai/gpt-oss-20b` en Docker Engine dentro de Ubuntu/WSL2: corrigió una función de suma en una copia descartable y aprobó tres tests independientes sin modificar sus archivos ni el original. Es una prueba básica de un modelo, no una evaluación general de programación. Falta la prueba con un segundo proveedor.
 
 ## Siguiente etapa
 
