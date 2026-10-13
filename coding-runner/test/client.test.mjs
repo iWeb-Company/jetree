@@ -12,9 +12,10 @@ test('runner identity never follows redirects or accepts remote insecure origins
   await assert.rejects(runnerRequest('https://jetree.example','synthetic',{},async()=>new Response('private detail',{status:401})),/RUNNER_REVOKED/);
 });
 test('remote jobs cannot select paths, commands, keys or unregistered models',()=>{
-  const projects=[{id:'11111111-1111-1111-1111-111111111111',path:'/authorized',testCommand:'node --test',models:[{provider:'groq',model:'fixed',keyFile:'/private'}]}];
+  const projects=[{id:'11111111-1111-1111-1111-111111111111',path:'/authorized',testCommand:'node --test',dependencies:'none',models:[{provider:'groq',model:'fixed',keyFile:'/private'}]}];
   const job={id:'22222222-2222-2222-2222-222222222222',claimId:'33333333-3333-3333-3333-333333333333',projectId:projects[0].id,prompt:'fix',provider:'groq',model:'fixed',path:'/etc',testCommand:'evil',keyFile:'/etc'};
   assert.equal(runnerJob(job,projects).project.path,'/authorized');assert.equal(runnerJob(job,projects).project.testCommand,'node --test');
+  assert.equal(runnerJob({...job,dependencies:'npm-ci'},projects).project.dependencies,'none');
   assert.throws(()=>runnerJob({...job,model:'other'},projects),/NOT_AUTHORIZED/);
   assert.throws(()=>runnerJob({...job,projectId:'unknown'},projects),/NOT_AUTHORIZED/);
 });

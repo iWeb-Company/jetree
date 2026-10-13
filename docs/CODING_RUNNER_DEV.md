@@ -1,6 +1,6 @@
 # Ejecutor de código: primera etapa experimental
 
-Este cambio añade un CLI independiente y una prueba del motor OpenCode; **todavía no permite iniciar tareas de código desde Jetree web o Telegram**. Es la etapa 1 del [plan](PLAN_AGENTE_CODIGO.md). No instala una app de escritorio ni un servicio en la VPS.
+El CLI independiente usa OpenCode como motor. La pestaña Código ya permite iniciar tareas desde Jetree web mediante un ejecutor vinculado; ver [CODING_SESSIONS_DEV.md](CODING_SESSIONS_DEV.md) para configuración, recuperación y dependencias npm opcionales. Telegram para programación sigue pendiente. No instala una app de escritorio ni un servicio en la VPS.
 
 ## Qué hace
 

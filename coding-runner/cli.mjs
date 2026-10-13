@@ -12,7 +12,7 @@ const usage = `Jetree code — ejecutor experimental para copias locales y sesio
   node coding-runner/cli.mjs doctor
   node coding-runner/cli.mjs build
   node coding-runner/cli.mjs prepare --project <raíz Git> --output <carpeta nueva fuera del proyecto>
-  node coding-runner/cli.mjs run --output <copia> --provider groq|openrouter|deepseek --model <ID> --prompt <pedido> --test <comando> --allow-inference
+  node coding-runner/cli.mjs run --output <copia> --provider groq|openrouter|deepseek --model <ID> --prompt <pedido> --test <comando> [--dependencies npm-ci] --allow-inference
   node coding-runner/cli.mjs status --output <copia>
   node coding-runner/cli.mjs diff --output <copia>
   node coding-runner/cli.mjs connect --server <https://Jetree> --code <código del panel> --config <config local JSON> [--connection <directorio privado>]
@@ -21,7 +21,7 @@ run requiere JETREE_CODE_API_KEY en el entorno. Edita y ejecuta dentro de una co
 export function options(args) {
   const result = {};
   for (let i = 0; i < args.length; i++) {
-    const key = args[i]; if (!/^--(?:project|output|provider|model|prompt|test|allow-inference|server|code|config|connection)$/.test(key) || key in result) throw new Error('CLI_ARGUMENT_INVALID');
+    const key = args[i]; if (!/^--(?:project|output|provider|model|prompt|test|allow-inference|server|code|config|connection|dependencies)$/.test(key) || key in result) throw new Error('CLI_ARGUMENT_INVALID');
     if (key === '--allow-inference') result[key] = true;
     else { const value = args[++i]; if (!value || value.startsWith('--')) throw new Error('CLI_ARGUMENT_INVALID'); result[key] = value; }
   }
@@ -44,7 +44,7 @@ async function main() {
   else if (action === 'status') result = JSON.parse(await readFile(path.join(input['--output'],'status.json'),'utf8'));
   else if (action === 'run') {
     if (!input['--allow-inference']) throw new Error('INFERENCE_AUTHORIZATION_REQUIRED');
-    const report = await runSandbox({ output: input['--output'], provider: input['--provider'], model: input['--model'], prompt: input['--prompt'], testCommand: input['--test'], key: process.env.JETREE_CODE_API_KEY });
+    const report = await runSandbox({ output: input['--output'], provider: input['--provider'], model: input['--model'], prompt: input['--prompt'], testCommand: input['--test'], dependencies: input['--dependencies'], key: process.env.JETREE_CODE_API_KEY });
     result = { state: report.state, files: report.files, testsExitCode: report.verification.exitCode, report: path.resolve(input['--output'],'report.json') };
     if (report.state !== 'ready_for_review') process.exitCode = 1;
   } else throw new Error('CLI_COMMAND_INVALID');
