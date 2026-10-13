@@ -5,6 +5,7 @@ import path from 'node:path';
 import { command } from './process.mjs';
 import { prepare, changes } from './workspace.mjs';
 import { runSandbox, IMAGE } from './sandbox.mjs';
+import { doctor } from './doctor.mjs';
 
 const usage = `Jetree code — experimento local, sin conexión al panel todavía.
   node coding-runner/cli.mjs doctor
@@ -27,9 +28,7 @@ async function main() {
   const [action, ...args] = process.argv.slice(2); const input = options(args);
   if (!action || action === 'help') { console.log(usage); return; }
   if (action === 'doctor') {
-    const result = { node: Number(process.versions.node.split('.')[0]) >= 22, git: false, dockerLinux: false, image: false };
-    try { await command('git', ['--version']); result.git = true; } catch {}
-    try { result.dockerLinux = (await command('docker', ['info', '--format', '{{.OSType}}'])).trim() === 'linux'; if (result.dockerLinux) { await command('docker', ['image','inspect',IMAGE]); result.image = true; } } catch {}
+    const result = await doctor();
     console.log(JSON.stringify(result, null, 2)); if (!result.node || !result.git || !result.dockerLinux || !result.image) process.exitCode = 1; return;
   }
   if (action === 'build') { const directory = path.dirname(fileURLToPath(import.meta.url)); await command('docker', ['build','-t',IMAGE,directory], { timeout: 600000, maxBytes: 4 * 1024 * 1024 }); console.log('Imagen del ejecutor construida.'); return; }

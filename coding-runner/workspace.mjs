@@ -3,6 +3,7 @@ import { lstat, realpath, open, mkdir, writeFile, readdir, readFile } from 'node
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { command } from './process.mjs';
+import { ensurePrivateDirectory } from './private-directory.mjs';
 
 export const hash = data => createHash('sha256').update(data).digest('hex');
 export function within(root, target) {
@@ -57,6 +58,7 @@ export async function prepare(project, output) {
     captured.push({ name, data });
   }
   await mkdir(destination, { mode: 0o700 });
+  await ensurePrivateDirectory(destination);
   const workspace = path.join(destination, 'workspace'); await mkdir(workspace, { mode: 0o700 });
   const baseline = path.join(destination, 'baseline'); await mkdir(baseline, { mode: 0o700 });
   for (const { name, data } of captured) {

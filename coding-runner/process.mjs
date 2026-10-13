@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
 
-export function command(program, args, { cwd, timeout = 30000, maxBytes = 2 * 1024 * 1024 } = {}) {
+export function command(program, args, { cwd, timeout = 30000, maxBytes = 2 * 1024 * 1024, env = {} } = {}) {
   return new Promise((resolve, reject) => {
     const safeArgs = program === 'git' ? ['-c', 'core.fsmonitor=false', ...args] : args;
     const child = spawn(program, safeArgs, { cwd, shell: false, windowsHide: true,
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_TERMINAL_PROMPT: '0' } });
+      env: { ...process.env, ...env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null', GIT_TERMINAL_PROMPT: '0' } });
     const chunks = []; let size = 0; let problem;
     const timer = setTimeout(() => { problem = new Error('COMMAND_TIMEOUT'); child.kill(); }, timeout);
     for (const stream of [child.stdout, child.stderr]) stream.on('data', data => {

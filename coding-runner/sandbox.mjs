@@ -5,6 +5,7 @@ import { command } from './process.mjs';
 import { changes } from './workspace.mjs';
 import { engineConfig, OpenCodeAdapter } from './opencode.mjs';
 import { providerTarget } from './gateway.mjs';
+import { ensurePrivateDirectory } from './private-directory.mjs';
 
 export const IMAGE = 'jetree-code:opencode-1.19.0';
 export function isolationArgs({ name, network, uid = 1000, gid = 1000 }) {
@@ -20,6 +21,7 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
   if (status.state !== 'prepared') throw new Error('RUN_ALREADY_STARTED');
   // Verify captured inputs have not changed before any code is executed.
   if ((await changes(root)).length) throw new Error('SNAPSHOT_CHANGED');
+  await ensurePrivateDirectory(root);
   await execute('docker', ['info', '--format', '{{.OSType}}']).then(value => { if (value.trim() !== 'linux') throw new Error('LINUX_DOCKER_REQUIRED'); });
   await execute('docker', ['image', 'inspect', IMAGE]);
   await writeFile(path.join(root, 'run.lock'), '', { flag: 'wx', mode: 0o600 });

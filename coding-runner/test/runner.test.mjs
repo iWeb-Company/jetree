@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, symlink, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, symlink, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { command } from '../process.mjs';
@@ -9,6 +9,8 @@ import { gateway, providerTarget } from '../gateway.mjs';
 import { engineConfig, OpenCodeAdapter } from '../opencode.mjs';
 import { isolationArgs, runSandbox } from '../sandbox.mjs';
 import { options } from '../cli.mjs';
+import { ensurePrivateDirectory } from '../private-directory.mjs';
+import { doctor } from '../doctor.mjs';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(),'jetree-code-')); t.after(()=>rm(root,{recursive:true,force:true}));
@@ -78,4 +80,34 @@ test('container policy mounts no host root or Docker socket and requires resourc
   const args=isolationArgs({name:'test',network:'internal',uid:1001,gid:1001});
   assert.ok(args.includes('--read-only'));assert.ok(args.includes('no-new-privileges:true'));assert.ok(args.includes('ALL'));assert.ok(args.includes('--pids-limit'));assert.ok(args.includes('--memory'));assert.ok(args.includes('--cpus'));assert.ok(args.includes('1001:1001'));assert.ok(!args.includes('--privileged'));
   const config=engineConfig('demo','token');assert.equal(config.permission.external_directory,'deny');assert.equal(config.share,'disabled');assert.deepEqual(config.enabled_providers,['jetree']);
+});
+
+test('private directory protects existing and new credential files with actual OS permissions',async t=>{
+  const root=await mkdtemp(path.join(tmpdir(),'jetree-private-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  if(process.platform==='win32'){
+    const widen=`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$dir=[System.IO.DirectoryInfo]::new($env:JETREE_CODE_PRIVATE_DIRECTORY);$acl=$dir.GetAccessControl();$acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new([Security.Principal.SecurityIdentifier]::new('S-1-1-0'),'ReadAndExecute','ContainerInherit,ObjectInherit','None','Allow'));$dir.SetAccessControl($acl)`;
+    await command('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(widen,'utf16le').toString('base64')],{env:{JETREE_CODE_PRIVATE_DIRECTORY:root}});
+  }
+  await writeFile(path.join(root,'existing.env'),'synthetic-secret');await ensurePrivateDirectory(root);await writeFile(path.join(root,'new.env'),'synthetic-secret');
+  if(process.platform==='win32'){
+    const check=`$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';$allowed=@([Security.Principal.WindowsIdentity]::GetCurrent().User.Value,'S-1-5-18','S-1-5-32-544');foreach($name in @('existing.env','new.env')){foreach($rule in [System.IO.FileInfo]::new([System.IO.Path]::Combine($env:JETREE_CODE_PRIVATE_DIRECTORY,$name)).GetAccessControl().GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])){if($rule.AccessControlType -eq 'Allow' -and $allowed -notcontains $rule.IdentityReference.Value){throw 'PRIVATE_FILE_FAILED'}}};'private-files-ok'`;
+    assert.match(await command('powershell.exe',['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(check,'utf16le').toString('base64')],{env:{JETREE_CODE_PRIVATE_DIRECTORY:root}}),/private-files-ok/);
+  }else assert.equal((await stat(root)).mode&0o077,0);
+});
+test('private directory rejects symlinks/junctions rather than changing another folder permissions',async t=>{
+  const root=await mkdtemp(path.join(tmpdir(),'jetree-private-link-'));t.after(()=>rm(root,{recursive:true,force:true}));
+  const target=path.join(root,'target');await mkdir(target);const link=path.join(root,'link');await symlink(target,link,process.platform==='win32'?'junction':'dir');
+  await assert.rejects(ensurePrivateDirectory(link),/PRIVATE_DIRECTORY_REQUIRED/);
+});
+test('doctor distinguishes missing CLI, inactive engine, backend and image without exposing errors',async()=>{
+  for(const [scenario,expected] of [['missing','docker_cli_missing'],['engine','docker_engine_unavailable'],['windows','linux_backend_required'],['image','image_missing'],['ready','ready']]){
+    const result=await doctor(async(program,args)=>{
+      if(program==='git')return 'git';
+      if(scenario==='missing'){const error=new Error('private detail');error.code='ENOENT';throw error;}
+      if(scenario==='engine')throw new Error('private detail');
+      if(args[0]==='info')return scenario==='windows'?'windows':'linux';
+      if(scenario==='image')throw new Error('private detail');return 'image';
+    });
+    assert.equal(result.status,expected);assert.doesNotMatch(JSON.stringify(result),/private detail/);
+  }
 });

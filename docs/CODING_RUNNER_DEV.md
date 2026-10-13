@@ -13,11 +13,11 @@ Este cambio añade un CLI independiente y una prueba del motor OpenCode; **todav
 - No repite una ejecución iniciada. Una interrupción/fallo conserva la copia para revisar y requiere preparar otra para un nuevo intento.
 - Motor y gateway vencen a los ocho minutos incluso si se termina abruptamente el CLI. El CLI elimina normalmente contenedores y red; ante una caída de Docker pueden quedar recursos detenidos para retirar manualmente.
 
-El filtrado de patrones no garantiza detectar todos los secretos. Revisar la copia y sus exclusiones antes de autorizar inferencia. Los archivos necesarios se pueden enviar al proveedor seleccionado. Los informes contienen contexto del proyecto y deben mantenerse privados. El API key se pasa mediante archivos de entorno temporales con permisos restrictivos; Windows debe tener ACL privadas en la carpeta de salida. El administrador de Docker puede acceder a los contenedores y sus variables: no ejecutar en una máquina compartida con administradores no confiables.
+El filtrado de patrones no garantiza detectar todos los secretos. Revisar la copia y sus exclusiones antes de autorizar inferencia. Los archivos necesarios se pueden enviar al proveedor seleccionado. Los informes contienen contexto del proyecto y deben mantenerse privados. El API key se pasa mediante archivos de entorno temporales con permisos restrictivos. En Windows el CLI fija y verifica una ACL de salida para el usuario actual, SYSTEM y administradores antes de copiar archivos y antes de crear credenciales; un fallo impide continuar. El administrador de Docker puede acceder a los contenedores y sus variables: no ejecutar en una máquina compartida con administradores no confiables.
 
 ## Requisitos en Windows
 
-Node 22+, Git y Docker Desktop con contenedores Linux. La detección de esta PC encontró Node y Git, pero **no Docker ni WSL**. No se instalaron automáticamente.
+Node 22+, Git y Docker Desktop con contenedores Linux. `doctor` distingue cliente ausente, motor que no arranca, backend equivocado e imagen pendiente de construir. Docker y WSL instalados no garantizan que el backend Linux esté funcionando.
 
 Instalar/configurar Docker implica requisitos de virtualización y puede requerir reiniciar Windows. Revisar las condiciones de licencia de Docker Desktop de la organización. Este prototipo no publica ningún puerto del motor: el CLI transporta las solicitudes autenticadas mediante Docker exec hacia el loopback del contenedor, con una contraseña aleatoria por ejecución.
 
