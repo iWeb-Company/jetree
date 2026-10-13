@@ -28,7 +28,8 @@ begin
   end loop;
   foreach signature in array array[
     'public.claim_telegram_updates(integer)', 'public.claim_telegram_updates_for_bot(uuid,integer)',
-    'public.consume_workspace_execution_quota(integer)', 'public.claim_figma_job(uuid,uuid)'
+    'public.consume_workspace_execution_quota(integer)', 'public.claim_figma_job(uuid,uuid)',
+    'public.claim_coding_session(uuid,uuid)', 'public.touch_coding_session(uuid,uuid,uuid,uuid,integer,text)', 'public.finish_coding_session(uuid,uuid,uuid,uuid,text,jsonb,text)'
   ] loop
     if has_function_privilege('anon', signature, 'execute')
       or has_function_privilege('authenticated', signature, 'execute') then

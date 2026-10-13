@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
+import CodingSessionsPanel from '@/components/CodingSessionsPanel';
 import DepartmentTree from '@/components/DepartmentTree';
 import AgentCard from '@/components/AgentCard';
 import AgentModal from '@/components/AgentModal';
@@ -64,7 +65,7 @@ function mapTaskRow(row: any): Task {
 
 export default function Home() {
   // Navegación de pestañas
-  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity' | 'coding'>('overview');
 
   // Filtro por departamento (para Dashboard General, Estructura de Nodos y Agentes IA)
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
@@ -718,7 +719,7 @@ export default function Home() {
 
         <nav aria-label="Navegación móvil" className="md:hidden flex flex-wrap gap-2 border-b border-cyan-950/40 p-3">
           {([
-            ['overview', 'Panel General'], ['departments', 'Estructura de Nodos'],
+            ['coding', 'Código'], ['overview', 'Panel General'], ['departments', 'Estructura de Nodos'],
             ['agents', 'Agentes IA'], ['activity', 'Monitoreo en Vivo'],
           ] as const).map(([tab, label]) => (
             <button key={tab} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-xs ${activeTab === tab ? 'bg-cyan-500/20 text-cyan-200' : 'bg-gray-900 text-gray-300'}`}>{label}</button>
@@ -735,7 +736,7 @@ export default function Home() {
           )}
 
           {/* Métricas Corporativas Rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+          {activeTab !== 'coding' && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
 
             <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl p-5 shadow-sm">
               <div className="flex justify-between items-start">
@@ -793,11 +794,12 @@ export default function Home() {
               </p>
             </div>
 
-          </div>
+          </div>}
 
           {/* -------------------------------------------------------- */}
           {/* PESTAÑA 1: PANEL GENERAL (OVERVIEW)                     */}
           {/* -------------------------------------------------------- */}
+          {activeTab === 'coding' && <CodingSessionsPanel agents={agents} />}
           {activeTab === 'overview' && (
             <div className="space-y-8">
               {/* Tablero Kanban de Tareas con Filtro por Departamento */}
