@@ -35,6 +35,11 @@ test('snapshot rejects output in the source and refuses to overwrite another run
   const f=await fixture(t);await assert.rejects(prepare(f.project,path.join(f.project,'run')),/OUTPUT_MUST_BE_OUTSIDE_PROJECT/);
   await prepare(f.project,f.output);await assert.rejects(prepare(f.project,f.output),/EEXIST/);
 });
+test('snapshot rejects an output parent alias that resolves inside the source',async t=>{
+  const f=await fixture(t);const alias=path.join(f.root,'source-alias');await symlink(f.project,alias,process.platform==='win32'?'junction':'dir');
+  await assert.rejects(prepare(f.project,path.join(alias,'run')),/OUTPUT_MUST_BE_OUTSIDE_PROJECT/);
+  await assert.rejects(stat(path.join(f.project,'run')),/ENOENT/);
+});
 test('snapshot rejects tracked symlink/junction escapes before creating any output',async t=>{
   const f=await fixture(t);const external=path.join(f.root,'outside');await mkdir(external);await writeFile(path.join(external,'private.txt'),'do not read');
   if(process.platform==='win32')await symlink(external,path.join(f.project,'linked'),'junction');else await symlink(path.join(external,'private.txt'),path.join(f.project,'linked'));

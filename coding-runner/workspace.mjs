@@ -38,7 +38,10 @@ async function boundedFile(root, relative) {
   } finally { await handle.close(); }
 }
 export async function prepare(project, output) {
-  const root = await realpath(project); const destination = path.resolve(output);
+  const root = await realpath(project); const requested = path.resolve(output);
+  // Windows temp/home paths can themselves be junctions. Compare canonical
+  // locations so an aliased output cannot end up inside the source repository.
+  const destination = path.join(await realpath(path.dirname(requested)), path.basename(requested));
   if (within(root, destination)) throw new Error('OUTPUT_MUST_BE_OUTSIDE_PROJECT');
   const top = (await command('git', ['-C', root, 'rev-parse', '--show-toplevel'])).trim();
   if (await realpath(top) !== root) throw new Error('SELECT_REPOSITORY_ROOT');
