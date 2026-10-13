@@ -8,7 +8,9 @@
     "build:figma": "tsc --project figma-plugin/tsconfig.json && node scripts/build-figma-plugin.mjs",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --import tsx --test tests/**/*.test.ts && node --test tests/figma-plugin.test.mjs",
+    "test": "node --import tsx --test tests/**/*.test.ts && node --test tests/figma-plugin.test.mjs coding-runner/test/*.test.mjs",
+    "code:doctor": "node coding-runner/cli.mjs doctor",
+    "code:build": "node coding-runner/cli.mjs build",
     "test:e2e": "node tests/integration/real-auth.mjs",
     "test:e2e:live": "node tests/integration/live-provider-telegram.mjs"
   },
