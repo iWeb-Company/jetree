@@ -116,3 +116,7 @@ test('doctor distinguishes missing CLI, inactive engine, backend and image witho
     assert.equal(result.status,expected);assert.doesNotMatch(JSON.stringify(result),/private detail/);
   }
 });
+test('command keeps diagnostic stderr out of structured stdout while preserving failures',async()=>{
+  assert.equal(await command(process.execPath,['-e',`process.stderr.write('diagnostic warning');process.stdout.write('linux\\n')`]),'linux\n');
+  await assert.rejects(command(process.execPath,['-e',`process.stderr.write('failure detail');process.exitCode=1`]),error=>error.exitCode===1&&error.output==='failure detail');
+});
