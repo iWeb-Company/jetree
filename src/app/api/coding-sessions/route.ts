@@ -38,7 +38,12 @@ export async function POST(request: Request) {
     }
     if(body.action==='cancel'){
       const {data,error}=await db.from('coding_sessions').select('id,status').eq('id',codingId(body.sessionId)).eq('user_id',user.id).maybeSingle();if(error)throw new Error('CODING_STORAGE_FAILED');if(!data)throw new Error('CODING_NOT_FOUND');
-      if(['queued','preparing','running','verifying'].includes(data.status))await db.from('coding_sessions').update({cancel_requested:true,...(data.status==='queued'?{status:'cancelled',finished_at:new Date().toISOString()}: {})}).eq('id',data.id).eq('user_id',user.id).eq('status',data.status);
+      if(['queued','preparing','running','verifying'].includes(data.status)){
+        const {error:cancelError}=await db.from('coding_sessions').update({cancel_requested:true}).eq('id',data.id).eq('user_id',user.id).in('status',['queued','preparing','running','verifying']);
+        if(cancelError)throw new Error('CODING_STORAGE_FAILED');
+        const {error:queueError}=await db.from('coding_sessions').update({status:'cancelled',finished_at:new Date().toISOString()}).eq('id',data.id).eq('user_id',user.id).eq('status','queued');
+        if(queueError)throw new Error('CODING_STORAGE_FAILED');
+      }
       return NextResponse.json({ok:true},{headers});
     }
     if(body.action!=='create' || body.authorized!==true)throw new Error('CODING_INPUT_INVALID');
