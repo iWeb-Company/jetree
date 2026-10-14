@@ -7,7 +7,7 @@ insert into public.coding_sessions(id,user_id,executor_id,project_id,request_id,
  ('84000000-0000-0000-0000-000000000002','81000000-0000-0000-0000-000000000001','82000000-0000-0000-0000-000000000001','83000000-0000-0000-0000-000000000001','85000000-0000-0000-0000-000000000002','Second','groq','fixed');
 do $$ declare role_name text;t text;begin
  foreach role_name in array array['anon','authenticated'] loop
-  foreach t in array array['coding_pair_codes','coding_executors','coding_projects','coding_sessions'] loop
+  foreach t in array array['coding_pair_codes','coding_executors','coding_projects','coding_sessions','coding_activity'] loop
    if has_table_privilege(role_name,'public.'||t,'select,insert,update,delete') then raise exception 'Direct coding access: % %',role_name,t;end if;
    if not (select relrowsecurity from pg_class where oid=('public.'||t)::regclass) then raise exception 'RLS missing';end if;
   end loop;
@@ -22,6 +22,26 @@ do $$ declare j public.coding_sessions; r public.coding_sessions;begin
  if exists(select 1 from public.claim_coding_session('82000000-0000-0000-0000-000000000001','81000000-0000-0000-0000-000000000002')) then raise exception 'Foreign user claimed';end if;
  select * into j from public.claim_coding_session('82000000-0000-0000-0000-000000000001','81000000-0000-0000-0000-000000000001');
  if j.status<>'preparing' or j.claim_id is null then raise exception 'Claim failed';end if;
+ if public.append_coding_activity(j.executor_id,j.user_id,j.id,gen_random_uuid(),'[{"sequence":1}]') then raise exception 'Foreign claim activity accepted';end if;
+ if not public.append_coding_activity(j.executor_id,j.user_id,j.id,j.claim_id,'[{"sequence":1,"kind":"tool","label":"read","status":"completed"}]') then raise exception 'Activity missing';end if;
+ perform public.append_coding_activity(j.executor_id,j.user_id,j.id,j.claim_id,'[{"sequence":1,"kind":"tool","label":"read","status":"completed"}]');
+ if (select count(*) from public.coding_activity where session_id=j.id)<>1 then raise exception 'Replayed log duplicated';end if;
+ if (select activity_bytes from public.coding_sessions where id=j.id)<>(select octet_length(event::text) from public.coding_activity where session_id=j.id) then raise exception 'Activity byte accounting mismatch';end if;
+ update public.coding_sessions set activity_bytes=1048576 where id=j.id;
+ if public.append_coding_activity(j.executor_id,j.user_id,j.id,j.claim_id,'[{"sequence":2}]') then raise exception 'Unbounded activity';end if;
+ if exists(select 1 from public.coding_activity where session_id=j.id and sequence=2) then raise exception 'Rejected batch partially saved';end if;
+ insert into public.provider_connections(id,user_id,provider,connection_type,status) values('86000000-0000-4000-8000-000000000001',j.user_id,'groq','api_key','connected');
+ update public.coding_sessions set model_source='jetree',connection_id='86000000-0000-4000-8000-000000000001' where id=j.id;
+ if public.reserve_coding_inference(j.id,gen_random_uuid(),gen_random_uuid()) then raise exception 'Foreign inference claim';end if;
+ if not public.reserve_coding_inference(j.id,j.claim_id,gen_random_uuid()) then raise exception 'Inference denied';end if;
+ if public.reserve_coding_inference(j.id,j.claim_id,gen_random_uuid()) then raise exception 'Concurrent inference accepted';end if;
+ update public.coding_sessions set inference_until=null,inference_calls=40 where id=j.id;
+ if public.reserve_coding_inference(j.id,j.claim_id,gen_random_uuid()) then raise exception 'Inference budget exceeded';end if;
+ update public.coding_sessions set inference_calls=0,cancel_requested=true where id=j.id;
+ if public.reserve_coding_inference(j.id,j.claim_id,gen_random_uuid()) then raise exception 'Cancelled inference accepted';end if;
+ update public.coding_sessions set cancel_requested=false where id=j.id;
+ update public.provider_connections set user_id='81000000-0000-0000-0000-000000000002' where id='86000000-0000-4000-8000-000000000001';
+ if public.reserve_coding_inference(j.id,j.claim_id,gen_random_uuid()) then raise exception 'Foreign API connection accepted';end if;
  if exists(select 1 from public.claim_coding_session(j.executor_id,j.user_id)) then raise exception 'Duplicate simultaneous claim';end if;
  if exists(select 1 from public.touch_coding_session(j.executor_id,j.user_id,j.id,gen_random_uuid(),1,'running')) then raise exception 'Wrong claim advanced';end if;
  select * into r from public.touch_coding_session(j.executor_id,j.user_id,j.id,j.claim_id,2,'verifying');

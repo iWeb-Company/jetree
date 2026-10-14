@@ -26,6 +26,14 @@ try{
   const claims=await Promise.all([runner(token,{action:'claim'}),runner(token,{action:'claim'})]);const claimed=claims.map(r=>r.body.job).filter(Boolean);assert.equal(claimed.length,1);const j=claimed[0];
   assert.equal((await runner(token,{action:'progress',jobId:j.id,claimId:randomUUID(),sequence:1,stage:'running'})).status,404);
   assert.equal((await runner(token,{action:'progress',jobId:j.id,claimId:j.claimId,sequence:1,stage:'running'})).status,200);
+  const activity={action:'activity',jobId:j.id,claimId:j.claimId,events:[{sequence:1,kind:'tool',label:'Comando: node --test',status:'completed',output:'3 tests passed Bearer synthetic-private-secret'}]};
+  assert.equal((await runner(token,{...activity,claimId:randomUUID()})).status,404);
+  assert.equal((await runner(token,activity)).status,200);assert.equal((await runner(token,activity)).status,200);
+  const logs=(await api(user.token,undefined,'/api/coding-sessions?session='+j.id)).body.session.activity;
+  assert.equal(logs.length,1);assert.ok(!logs[0].event.output.includes('synthetic-private-secret'));
+  assert.equal((await users[1].client.from('coding_activity').select('*')).error.code,'42501');
+  assert.equal((await api(user.token,{...job,requestId:randomUUID(),connectionId:randomUUID()})).status,404,'Unapproved Jetree source denied');
+  assert.equal((await runner(token,{action:'capabilities',projectIds:[randomUUID()]})).status,404);
   const report={state:'ready_for_review',files:[{name:'sum.cjs',status:'modified',diff:'--- a/sum.cjs\n+++ b/sum.cjs\n-exports.sum=(a,b)=>a-b;\n+exports.sum=(a,b)=>a+b;'}],summary:'Fixed the sum. Synthetic runner report; no live inference.',verification:{command:'node --test',exitCode:0,output:'3 tests passed'}};
   const complete={action:'complete',jobId:j.id,claimId:j.claimId,status:'ready_for_review',report};
   assert.equal((await runner(token,{...complete,report:{...report,verification:{...report.verification,exitCode:1}}})).status,400);
@@ -39,6 +47,7 @@ try{
   browser=await chromium.launch({headless:true});const page=await browser.newPage();await page.goto(origin);await page.locator('input[type=email]').fill(user.email);await page.locator('input[type=password]').fill(user.password);await page.getByRole('button',{name:'Acceder al Workspace'}).click();await page.getByRole('button',{name:'Cerrar Sesión'}).waitFor({timeout:60000});await page.getByRole('button',{name:'Código',exact:true}).first().click();
   await page.getByLabel('Proyecto de código').selectOption(projectId);await page.getByLabel('Pedido de código').fill('A real browser queued request');await expect(page.getByRole('button',{name:'Iniciar tarea',exact:true})).toBeDisabled();await page.getByRole('checkbox').check();await page.getByRole('button',{name:'Iniciar tarea',exact:true}).click();await expect(page.getByRole('button').filter({hasText:'A real browser queued request'})).toBeVisible();
   await page.getByRole('button').filter({hasText:'Fix the sum function'}).click();await expect(page.getByText('Archivos modificados', {exact:true})).toBeVisible();await page.getByText('sum.cjs · modified',{exact:true}).click();await expect(page.locator('pre').filter({hasText:'exports.sum'})).toBeVisible();
+  await expect(page.getByRole('log',{name:'Logs del agente'})).toContainText('Comando: node --test');
   await mkdir('artifacts',{recursive:true});for(const width of [1440,390]){await page.setViewportSize({width,height:1000});await page.evaluate(()=>{window.scrollTo(0,0);for(const element of document.querySelectorAll('*'))if(element.scrollTop)element.scrollTop=0;});await page.screenshot({path:`artifacts/coding-${width}.png`,fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'No horizontal overflow');}
   await api(user.token,{action:'revoke',executorId:paired.body.executorId});assert.equal((await runner(token,{action:'claim'})).status,401);assert.equal((await api(user.token,{...job,requestId:randomUUID()})).status,404);
   console.log('PASS coding pairing, private runner token, ownership, explicit authorization, model scope, concurrent claim, duplicate delivery, verified reports, cancellation, revocation, desktop/mobile browser and diffs');

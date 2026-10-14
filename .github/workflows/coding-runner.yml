@@ -25,7 +25,9 @@ jobs:
         with:
           node-version: '22'
       - run: node --test coding-runner/test/*.test.mjs
+      - name: Pull pinned Node image with registry fallback
+        run: node scripts/resolve-node-image.mjs >> "$GITHUB_ENV"
       - name: Build pinned experimental runner
-        run: docker build -t jetree-code:opencode-1.19.0 coding-runner
+        run: docker build --build-arg NODE_IMAGE -t jetree-code:opencode-1.19.0 coding-runner
       - name: Verify actual engine tools and isolation without live credentials
         run: node coding-runner/test/docker.mjs

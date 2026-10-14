@@ -21,6 +21,7 @@ const cases = [
   ['GET', '/api/coding-sessions', 401],
   ['POST', '/api/coding-sessions', 401],
   ['POST', '/api/coding-runner', 401],
+  ['POST', '/api/coding-inference', 401],
   ['POST', '/api/figma', 401],
   ['POST', '/api/figma/plugin', 401],
   ['POST', '/api/agent-tools', 401],

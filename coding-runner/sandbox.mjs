@@ -9,15 +9,17 @@ import { ensurePrivateDirectory } from './private-directory.mjs';
 import { atomicJson } from './persistence.mjs';
 import { engineFailure, failureCode } from './diagnostics.mjs';
 import { dependencyPolicy, prepareDependencies, verifyDependencyInputs } from './dependencies.mjs';
+import {activityCollector,eventReaderScript,redactActivity} from './activity.mjs';
+import {StringDecoder} from 'node:string_decoder';
 
 export const IMAGE = 'jetree-code:opencode-1.19.0';
 export function isolationArgs({ name, network, uid = 1000, gid = 1000 }) {
   return ['run', '-d', '--init', '--name', name, '--network', network, '--user', `${uid}:${gid}`, '--env', 'HOME=/home/node', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true', '--pids-limit', '128', '--memory', '2g', '--cpus', '2', '--tmpfs', '/tmp:rw,nosuid,nodev,size=256m', '--tmpfs', `/home/node/.local:rw,nosuid,nodev,size=128m,uid=${uid},gid=${gid},mode=0700`, '--tmpfs', `/home/node/.config:rw,nosuid,nodev,size=16m,uid=${uid},gid=${gid},mode=0700`];
 }
 const envLine = (key, value) => { if (typeof value !== 'string' || /[\r\n\0]/.test(value)) throw new Error('ENV_INVALID'); return `${key}=${value}`; };
-export async function runSandbox({ output, prompt, provider, model, key, testCommand, dependencies, execute = command, signal }) {
+export async function runSandbox({ output, prompt, provider, model, key, testCommand, dependencies, execute = command, signal, proxyUrl, onActivity }) {
   const policy = dependencyPolicy(dependencies);
-  providerTarget(provider); engineConfig(model, 'validate');
+  if(!proxyUrl)providerTarget(provider); engineConfig(model, 'validate');
   if (!key || /[\r\n\0]/.test(key) || typeof prompt !== 'string' || !prompt.trim() || prompt.length > 8000 || typeof testCommand !== 'string' || !testCommand.trim() || testCommand.length > 1000) throw new Error('RUN_INPUT_INVALID');
   const root = await realpath(output); const workspace = await realpath(path.join(root, 'workspace'));
   if (workspace !== path.join(root, 'workspace') || /[,\r\n]/.test(workspace)) throw new Error('WORKSPACE_INVALID');
@@ -32,9 +34,11 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
   const id = 'jetree-code-' + randomBytes(8).toString('hex');
   const net = id + '-private'; const broker = id + '-broker'; const engine = id + '-engine';
   const gatewayToken = randomBytes(32).toString('base64url'); const password = randomBytes(32).toString('base64url');
+  const emitActivity=event=>onActivity?.({...event,label:redactActivity(event.label,[key,password,gatewayToken]),...(event.output?{output:redactActivity(event.output,[key,password,gatewayToken])}:{})});
   const brokerEnv = path.join(root, 'broker.env'); const engineEnv = path.join(root, 'engine.env');
   const save = data => atomicJson(path.join(root, 'status.json'), data);
   const cancellation = new AbortController();
+  const activityStop=new AbortController();let activityTask;
   let interrupted = false; let session; let adapter; let resourcesStarted = false; let dependencyResult; let engineDiagnostic;
   const interrupt = () => { interrupted = true; cancellation.abort(); if (session && adapter) adapter.abort(session).catch(() => {}); };
   signal?.addEventListener('abort',interrupt,{once:true});
@@ -45,7 +49,7 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     await save({ state: 'starting', startedAt: new Date().toISOString() });
     if (policy === 'npm-ci') dependencyResult = await prepareDependencies({ root, workspace, id, execute, signal: cancellation.signal });
     if (interrupted) throw new Error('RUN_INTERRUPTED');
-    await writeFile(brokerEnv, [envLine('JETREE_CODE_PROVIDER', provider), envLine('JETREE_CODE_MODEL', model), envLine('JETREE_CODE_API_KEY', key), envLine('JETREE_CODE_GATEWAY_TOKEN', gatewayToken)].join('\n'), { mode: 0o600, flag: 'wx' });
+    await writeFile(brokerEnv, [envLine('JETREE_CODE_PROVIDER', provider), envLine('JETREE_CODE_MODEL', model), envLine('JETREE_CODE_API_KEY', key), envLine('JETREE_CODE_GATEWAY_TOKEN', gatewayToken),...(proxyUrl?[envLine('JETREE_CODE_PROXY_URL',proxyUrl)]:[])].join('\n'), { mode: 0o600, flag: 'wx' });
     await writeFile(engineEnv, [envLine('OPENCODE_SERVER_PASSWORD', password), envLine('OPENCODE_CONFIG_CONTENT', JSON.stringify(engineConfig(model, gatewayToken)))].join('\n'), { mode: 0o600, flag: 'wx' });
     await execute('docker', ['network', 'create', '--internal', net]); resourcesStarted = true;
     await execute('docker', [...isolationArgs({ name: broker, network: 'bridge' }), '--env-file', brokerEnv, IMAGE, 'node', '/opt/jetree-code/gateway.mjs']);
@@ -70,15 +74,23 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     if (!ready || interrupted) throw new Error('ENGINE_NOT_READY');
     session = await adapter.start();
     await save({ state: 'running', session });
+    if(onActivity){
+      const collect=activityCollector(emitActivity,[key,password,gatewayToken]);const decoder=new StringDecoder('utf8');let buffer='';let ready;
+      const connected=new Promise(resolve=>{ready=resolve;});
+      activityTask=execute('docker',['exec',engine,'node','-e',eventReaderScript,session],{timeout:305000,maxBytes:4*1024*1024,signal:activityStop.signal,onStdout:data=>{buffer+=decoder.write(data);if(buffer.length>65536){buffer='';return;}let end;while((end=buffer.indexOf('\n'))>=0){const line=buffer.slice(0,end);buffer=buffer.slice(end+1);try{const event=JSON.parse(line);if(event.ready)ready();else collect(event);}catch{}}}}).catch(()=>{if(!activityStop.signal.aborted)emitActivity({kind:'message',status:'error',label:'Canal de actividad cerrado; la ejecución continúa.'});});
+        let readinessTimer;await Promise.race([connected,new Promise(resolve=>{readinessTimer=setTimeout(resolve,5000);})]);clearTimeout(readinessTimer);
+    }
     const message = await adapter.message(session, prompt + '\nTrabajá solamente en /workspace. No publiques cambios. Ejecutá y verificá los tests del pedido. El resultado será revisado por el usuario.', model);
     if (interrupted) throw new Error('RUN_INTERRUPTED');
     const failure = engineFailure(message);
     if (failure) { engineDiagnostic = failure.diagnostic; throw new Error(failure.code); }
     await save({ state: 'verifying', session });
+    emitActivity({kind:'verification',status:'running',label:'Verificando: '+testCommand});
     let verification;
     try { if (dependencyResult) await verifyDependencyInputs(workspace, dependencyResult.hashes); const logs = await execute('docker', ['exec', '-w', '/workspace', engine, 'sh', '-lc', testCommand], { timeout: 120000, maxBytes: 256 * 1024, signal: cancellation.signal }); verification = { command: testCommand, exitCode: 0, output: logs }; }
     catch (error) { verification = { command: testCommand, exitCode: error.exitCode ?? null, output: error.output || error.message }; }
     if (interrupted) throw new Error('RUN_INTERRUPTED');
+    emitActivity({kind:'verification',status:verification.exitCode===0?'completed':'error',label:'Verificación · salida '+verification.exitCode,output:verification.output.slice(0,4096)});
     const files = await changes(root, true);
     const report = { state: verification.exitCode === 0 ? 'ready_for_review' : 'tests_failed', session, provider, model, files, verification,
       summary: message.parts.filter(part => part.type === 'text').map(part => part.text).join('\n').slice(0, 6000), finishedAt: new Date().toISOString(), originalModified: false };
@@ -94,6 +106,7 @@ export async function runSandbox({ output, prompt, provider, model, key, testCom
     await save({ state: interrupted ? 'interrupted' : 'failed', session, error: code, diagnostics, retry: 'Create a new snapshot; never automatically replay this run.' }); throw new Error(code);
   }
   finally {
+    activityStop.abort();await activityTask;
     process.removeListener('SIGINT', interrupt); process.removeListener('SIGTERM', interrupt);
     signal?.removeEventListener('abort',interrupt);
     if (adapter && session) await adapter.abort(session).catch(() => {});

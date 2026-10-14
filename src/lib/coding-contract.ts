@@ -8,11 +8,11 @@ export function codingText(value: unknown, max: number): string {
   if (typeof value !== 'string' || !value.trim() || value.length>max || value.includes('\0')) throw new Error('CODING_INPUT_INVALID');
   return value.trim();
 }
-export type CodingModel = { provider:'groq'|'openrouter'|'deepseek'; model:string };
+export type CodingModel = { provider:'groq'|'openrouter'|'deepseek'|'openai'|'gemini'|'claude'; model:string };
 export function codingModels(value: unknown): CodingModel[] {
   if (!Array.isArray(value) || value.length<1 || value.length>10) throw new Error('CODING_INPUT_INVALID');
   return value.map(item => {
-    if (!item || !['groq','openrouter','deepseek'].includes(item.provider) || typeof item.model!=='string' || !/^[A-Za-z0-9][A-Za-z0-9/_.:-]{0,150}$/.test(item.model)) throw new Error('CODING_INPUT_INVALID');
+    if (!item || !['groq','openrouter','deepseek','openai','gemini','claude'].includes(item.provider) || typeof item.model!=='string' || !/^[A-Za-z0-9][A-Za-z0-9/_.:-]{0,150}$/.test(item.model)) throw new Error('CODING_INPUT_INVALID');
     return {provider:item.provider,model:item.model};
   });
 }

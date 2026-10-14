@@ -30,9 +30,11 @@ jobs:
           test -n "$DEPLOY_HOST"
           [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]]
           node --input-type=module -e 'const u=new URL(process.env.NEXT_PUBLIC_SUPABASE_URL); if(u.protocol!=="https:"||!u.hostname.endsWith(".supabase.co")||(process.env.TARGET==="dev"&&u.hostname==="lgimqhuohkjtwfxbaecb.supabase.co"))process.exit(1)'
+      - name: Pull pinned Node image with registry fallback
+        run: node scripts/resolve-node-image.mjs >> "$GITHUB_ENV"
       - name: Build immutable environment image
         run: |
-          docker build --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "jetree.environment=$TARGET" --label "jetree.schema=$(sha256sum supabase/migrations/*.sql | sha256sum | cut -d' ' -f1)" -t "jetree:$TARGET-$GITHUB_SHA" .
+          docker build --build-arg NODE_IMAGE --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY --label "org.opencontainers.image.revision=$GITHUB_SHA" --label "jetree.environment=$TARGET" --label "jetree.schema=$(sha256sum supabase/migrations/*.sql | sha256sum | cut -d' ' -f1)" -t "jetree:$TARGET-$GITHUB_SHA" .
       - name: Deliver through restricted SSH and verify or roll back
         env:
           DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}

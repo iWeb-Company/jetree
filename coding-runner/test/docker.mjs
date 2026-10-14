@@ -43,7 +43,11 @@ const execute=async(program,args,options)=>{
   return result;
 };
 try{
-  const report=await runSandbox({output,prompt:'Fix sum.cjs so that adding 2 and 3 returns 5. Use bash to edit it.',provider:'groq',model:'jetree-ci',key:'synthetic-ci-no-provider-key',testCommand:'node --test',dependencies:'npm-ci',execute});
+  const activity=[];
+  const report=await runSandbox({output,prompt:'Fix sum.cjs so that adding 2 and 3 returns 5. Use bash to edit it.',provider:'groq',model:'jetree-ci',key:'synthetic-ci-no-provider-key',testCommand:'node --test',dependencies:'npm-ci',execute,onActivity:event=>activity.push(event)});
+  assert.ok(activity.some(event=>event.kind==='tool'&&event.status==='completed'),'OpenCode tool activity must reach the runner');
+  assert.ok(activity.some(event=>event.kind==='verification'&&event.status==='completed'),'Independent test output must reach the runner');
+  assert.ok(!JSON.stringify(activity).includes('synthetic-ci-no-provider-key'));
   assert.equal(report.state,'ready_for_review');assert.equal(report.verification.exitCode,0);assert.ok(report.files.some(file=>file.name==='sum.cjs'));assert.equal(await readFile(path.join(project,'sum.cjs'),'utf8'),'exports.sum=(a,b)=>a-b;\n');assert.ok(checkedIsolation);
   await assert.rejects(readFile(path.join(output,'broker.env')),/ENOENT/);await assert.rejects(readFile(path.join(output,'engine.env')),/ENOENT/);
   assert.equal(await readFile(path.join(project,'human.txt'),'utf8'),'uncommitted human edit preserved\n');
