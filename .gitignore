@@ -1,6 +1,7 @@
 #dependencies
 /node_modules
 /connector/node_modules/
+/coding-runner/node_modules/
 /.pnp
 .pnp.js
 
@@ -39,3 +40,4 @@ yarn-error.log*
 /public/downloads/jetree-google-connector.tar.gz
 /supabase/.temp/
 /artifacts/
+/public/figma-plugin/

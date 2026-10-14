@@ -1,10 +1,14 @@
 import { gmailRequest } from '@/lib/server/gmail-tools';
 import { webSearch } from '@/lib/server/web-search';
+import { executeFigmaTool } from '@/lib/server/figma-tools';
+import type { FigmaOperation } from '@/lib/figma-contract';
 import { getServiceSupabase } from '@/lib/server/auth';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getGithubConnectionAccess, getToolAccessToken } from '@/lib/server/tool-connections';
 import type { GithubAccess } from '@/lib/agents/github-access';
 import { assertToolEnabled, parseToolRequest, type ToolRequest } from '@/lib/agents/tool-catalog';
+import {prepareCustomMcpRequest,executeCustomMcpTool} from './custom-mcp-tools';
+import type {CustomMcpOperation} from '@/lib/custom-mcp-contract';
 
 function capText(value: string, max = 16_000) { return value.length > max ? value.slice(0, max) + '\n[recortado]' : value; }
 function encodePath(value: string) { return value.split('/').map(encodeURIComponent).join('/'); }
@@ -125,10 +129,14 @@ async function driveRequest(token: string, operation: ToolRequest['operation'], 
 
 export async function executeAuthorizedTool(client: SupabaseClient, userId: string, agentId: string, toolId: string, operation: string, rawInput: unknown, approvalId?: string, conversationId?: string | null) {
   const service = getServiceSupabase();
-  const { data: agent, error: agentError } = await client.from('agents').select('id, enabled_tool_ids').eq('id', agentId).maybeSingle();
+  const { data: agent, error: agentError } = await client.from('agents').select('*').eq('id', agentId).is('deleted_at', null).maybeSingle();
   if (agentError || !agent) throw new Error('TOOL_AGENT_ACCESS_DENIED');
   assertToolEnabled(agent.enabled_tool_ids, toolId);
   const request = parseToolRequest(toolId, operation, rawInput);
+  if(request.provider==='custom_mcp'){
+    const prepared=await prepareCustomMcpRequest(userId,agentId,{...request,operation:request.operation as CustomMcpOperation},Boolean(approvalId));
+    request.input=prepared.input;request.write=prepared.write;
+  }
 
   if (request.write && !approvalId) {
     const { data: approval, error } = await service.from('agent_tool_approvals').insert({
@@ -144,10 +152,10 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
     if (callError) throw new Error('TOOL_AUDIT_FAILED');
     return { pendingApproval: true, approvalId: approval.id, message: 'La acción de escritura requiere aprobación.' };
   }
-  if (request.write && approvalId) {
-    const { data: approval } = await service.from('agent_tool_approvals').select('status, user_id, agent_id, tool_id, operation')
+  if ((request.write || request.provider==='custom_mcp') && approvalId) {
+    const { data: approval } = await service.from('agent_tool_approvals').select('status, user_id, agent_id, tool_id, operation, input')
       .eq('id', approvalId).maybeSingle();
-    if (!approval || approval.status !== 'executing' || approval.user_id !== userId || approval.agent_id !== agentId || approval.tool_id !== toolId || approval.operation !== operation) {
+    if (!approval || approval.status !== 'executing' || approval.user_id !== userId || approval.agent_id !== agentId || approval.tool_id !== toolId || approval.operation !== operation || JSON.stringify(parseToolRequest(toolId, operation, approval.input).input) !== JSON.stringify(request.input)) {
       throw new Error('TOOL_APPROVAL_NOT_PENDING');
     }
   }
@@ -166,13 +174,17 @@ export async function executeAuthorizedTool(client: SupabaseClient, userId: stri
   }
   if (callError || !call) throw new Error('TOOL_AUDIT_FAILED');
   try {
-    const token = request.provider === 'web_search' ? '' : await getToolAccessToken(userId, request.provider);
+    const token = request.provider === 'web_search' || request.provider === 'figma' || request.provider==='custom_mcp' ? '' : await getToolAccessToken(userId, request.provider);
     const result = request.provider === 'github'
       ? await githubRequest(token, request.operation, request.input, await getGithubConnectionAccess(userId))
+      : request.provider==='custom_mcp' ? await executeCustomMcpTool(userId,agentId,request.operation as CustomMcpOperation,request.input,Boolean(approvalId))
       : request.provider === 'gmail' ? await gmailRequest(token, request.operation, request.input)
       : request.provider === 'web_search' ? await webSearch(request.operation, request.input)
+      : request.provider === 'figma' ? await executeFigmaTool(userId, agent, request.operation as FigmaOperation, request.input, approvalId, conversationId)
       : await driveRequest(token, request.operation, request.input);
-    const summary = Array.isArray(result)
+    const summary = result && typeof result === 'object' && 'queued' in result && result.queued
+      ? 'Cambio aprobado y en cola; todavía no aplicado en Figma.'
+      : Array.isArray(result)
       ? `Se devolvieron ${result.length} resultados.`
       : typeof result === 'string'
         ? `Lectura completada; ${result.length} caracteres.`

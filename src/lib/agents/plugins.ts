@@ -17,6 +17,12 @@ export const PLUGIN_CATEGORIES: { id: PluginCategory; label: string; icon: strin
 ];
 
 export const ALL_CHATGPT_WORK_PLUGINS: AgentPlugin[] = [
+  {id:'plugin-custom-mcp',name:'MCP personalizados',description:'Usa los servidores MCP que conectaste y asignaste a este agente. Las llamadas requieren aprobación salvo lecturas que autorices explícitamente.',category:'installed',icon:'🔌',providerCompatibility:['openai','gemini','claude','custom','deepseek','groq'],operations:['list_mcp_servers','list_mcp_tools','call_mcp_tool (con aprobación por defecto)','recursos y prompts MCP']},
+  {
+    id: 'plugin-figma-core', name: 'Figma', description: 'Lee archivos, analiza diseños y consulta comentarios. Comentar y editar requiere aprobación; la edición espera al plugin abierto en Figma.',
+    category: 'installed', icon: '🎨', providerCompatibility: ['openai', 'gemini', 'claude', 'custom', 'deepseek', 'groq'],
+    operations: ['list_figma_files', 'get_figma_file', 'get_figma_nodes', 'inspect_figma', 'list_figma_comments', 'post_figma_comment (con aprobación)', 'apply_figma_changes (con aprobación y plugin)', 'get_figma_jobs'],
+  },
   {
     id: 'plugin-gmail-core', name: 'Gmail', description: 'Busca y lee correos. Enviar, contestar, marcar como leído y mover a papelera requiere aprobación.',
     category: 'installed', icon: '✉️', providerCompatibility: ['openai', 'gemini', 'claude', 'custom', 'deepseek', 'groq'],

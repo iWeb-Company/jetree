@@ -13,6 +13,8 @@ function statusFor(code: string) {
   if (code === 'TOOL_CONNECTION_REQUIRED' || code === 'TOOL_CONNECTION_EXPIRED') return 409;
   if (code === 'TOOL_INPUT_INVALID' || code === 'TOOL_NOT_SUPPORTED') return 400;
   if (code === 'TOOL_APPROVAL_NOT_PENDING') return 409;
+  if(code==='MCP_AUTH_REQUIRED'||code==='MCP_BUSY'||code==='MCP_CATALOG_CHANGED')return 409;
+  if(code.startsWith('MCP_'))return 502;
   if (code === 'SERVER_CONFIGURATION_ERROR' || code === 'TOOL_SEARCH_NOT_CONFIGURED') return 503;
   if (code.startsWith('TOOL_PROVIDER_') || code === 'TOOL_OPERATION_FAILED' || code === 'TOOL_FILE_TYPE_UNSUPPORTED') return 502;
   return 500;

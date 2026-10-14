@@ -2,6 +2,11 @@
 
 import { mergeToolMessage } from '@/lib/tool-feedback';
 import ChatApprovals from '@/components/ChatApprovals';
+import FigmaConversationJobs from '@/components/FigmaConversationJobs';
+import ChatImage from '@/components/ChatImage';
+import ChatFile from '@/components/ChatFile';
+import { generationTarget, imageAdvice, imageRequest, type ImageRef } from '@/lib/chat-images';
+import { prepareImageUpload } from '@/lib/image-upload';
 import { PersonalModelDevice, personalModelHeaders } from '@/components/PersonalModelConnections';
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -34,6 +39,13 @@ export default function AgentChatDrawer({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
+  const [pendingImage, setPendingImage] = useState<ImageRef | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageNotice, setImageNotice] = useState('');
+  const [generateImage, setGenerateImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeAgentRef = useRef(agent?.id);
+  activeAgentRef.current = isOpen ? agent?.id : undefined;
   const [loading, setLoading] = useState(false);
   const [toolPanelOpen, setToolPanelOpen] = useState(false);
   const [selectedToolId, setSelectedToolId] = useState('');
@@ -73,6 +85,7 @@ export default function AgentChatDrawer({
     let active = true;
     setMessages([]);
     setConversationId(null);
+    setPendingImage(null); setImageNotice(''); setGenerateImage(false);
 
     const loadSharedConversation = async () => {
       const welcome: ChatMessage = {
@@ -126,9 +139,10 @@ export default function AgentChatDrawer({
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || loading || !agent) return;
+    if ((!inputText.trim() && !pendingImage) || loading || imageBusy || !agent) return;
 
-    const userMsgText = inputText.trim();
+    const userMsgText = inputText.trim() || 'Describí esta imagen.';
+    const attachedImage = pendingImage;
     setInputText('');
 
     const userMsg: ChatMessage = {
@@ -136,6 +150,7 @@ export default function AgentChatDrawer({
       agentId: agent.id,
       role: 'user',
       content: userMsgText,
+      images: attachedImage ? [attachedImage] : [],
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
@@ -156,15 +171,19 @@ export default function AgentChatDrawer({
           conversationId,
           message: userMsgText,
           modelSource: 'api',
+          imageId: attachedImage?.id,
+          generateImage,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
+        if (data.imageIdConsumed) setPendingImage(null);
         throw new Error(data.error || 'Error al comunicarse con el agente');
       }
       setConversationId(data.conversationId || conversationId);
+      setPendingImage(null); setGenerateImage(false); setImageNotice('');
 
       // Propagar logs generados a la consola de monitoreo global
       if (data.logs && Array.isArray(data.logs)) {
@@ -178,10 +197,13 @@ export default function AgentChatDrawer({
         content: data.reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         delegation: data.delegation,
+        images: data.images || [],
+        files: data.files || [],
       };
 
       setMessages(prev => [...prev, agentReply]);
     } catch (err: any) {
+      setInputText(userMsgText);
       const errorMsg: ChatMessage = {
         id: `err-${Date.now()}`,
         agentId: agent.id,
@@ -193,6 +215,21 @@ export default function AgentChatDrawer({
     } finally {
       setLoading(false);
     }
+  };
+
+  const uploadImage = async (file: File) => {
+    if (!agent || imageBusy || loading) return;
+    const targetAgent = agent.id;
+    setImageBusy(true); setImageNotice('Preparando imagen…');
+    try {
+      const blob = await prepareImageUpload(file);
+      const { data } = await supabase.auth.getSession();
+      if (!data.session?.access_token) throw new Error('La sesión expiró.');
+      const response = await fetch(`/api/chat-images?agentId=${encodeURIComponent(targetAgent)}`, { method: 'POST', headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': blob.type }, body: blob });
+      const payload = await response.json(); if (!response.ok) throw new Error(payload.error || 'No se pudo adjuntar la imagen.');
+      if (activeAgentRef.current === targetAgent) { setPendingImage(payload.image); setImageNotice('Imagen lista. Se comparte con la API del agente al enviar.'); }
+    } catch (error) { setImageNotice(error instanceof Error ? error.message : 'No se pudo adjuntar la imagen.'); }
+    finally { setImageBusy(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
   const runTool = async () => {
@@ -310,6 +347,7 @@ export default function AgentChatDrawer({
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 font-sans">
           {usableToolIds.length > 0 && <p className="text-xs text-gray-400">Pedí lo que necesitás: el agente elegirá GitHub o Drive. Las acciones que modifican datos requieren tu aprobación aquí.</p>}
           <ChatApprovals conversationId={conversationId} refreshKey={messages.length} />
+          {agent.enabledPluginIds?.includes('plugin-figma-core') && <FigmaConversationJobs conversationId={conversationId} />}
           {messages.map(msg => {
             const isUser = msg.role === 'user';
             return (
@@ -331,6 +369,8 @@ export default function AgentChatDrawer({
                   }`}
                 >
                   <div className="whitespace-pre-wrap">{msg.content}</div>
+                  {msg.images?.map(image => <ChatImage key={image.id} image={image} />)}
+                  {msg.files?.map(file => <ChatFile key={file.id} file={file} />)}
 
                   {/* Badge de derivación si hubo subordinado ejecutando */}
                   {msg.delegation && (
@@ -373,6 +413,15 @@ export default function AgentChatDrawer({
 
         {/* Input Bar */}
         <div className="p-4 border-t border-cyan-950/60 bg-[#0b101d]/60 shrink-0">
+          {pendingImage && <div className="mb-2 flex items-center gap-2 text-xs text-cyan-200"><span>Imagen adjunta</span><button type="button" disabled={loading} onClick={() => setPendingImage(null)} className="underline">Quitar</button><div className="max-h-24 overflow-hidden"><ChatImage image={pendingImage} /></div></div>}
+          <div className="mb-2 flex flex-wrap items-center gap-3 text-xs text-gray-300">
+            <input ref={fileInputRef} type="file" accept="image/png,image/jpeg,image/webp" aria-label="Adjuntar una imagen" disabled={loading || imageBusy} className="hidden" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadImage(file); }} />
+            <button type="button" disabled={loading || imageBusy} onClick={() => fileInputRef.current?.click()} className="rounded-lg border border-cyan-900 px-3 py-2 disabled:opacity-50">{imageBusy ? 'Adjuntando…' : 'Adjuntar imagen'}</button>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={generateImage} disabled={loading} onChange={event => setGenerateImage(event.target.checked)} className="accent-cyan-500" />Generar imagen</label>
+            <span className="text-[10px] text-gray-500">JPG, PNG o WebP · hasta 5 MB</span>
+          </div>
+          {imageNotice && <p role="status" className="mb-2 text-xs text-amber-200">{imageNotice}</p>}
+          {(pendingImage || generateImage || imageRequest(inputText).generate) && <p className="mb-2 text-[11px] text-cyan-200">{imageAdvice(generateImage || imageRequest(inputText).generate ? 'generation' : 'vision', generateImage || imageRequest(inputText).generate ? generationTarget(agent).provider : agent.provider)} Configurá los modelos en Editar agente → Imágenes.</p>}
           <form onSubmit={handleSendMessage} className="flex gap-2">
             <input
               type="text"
@@ -388,7 +437,7 @@ export default function AgentChatDrawer({
             />
             <button
               type="submit"
-              disabled={loading || !inputText.trim()}
+              disabled={loading || imageBusy || (!inputText.trim() && !pendingImage)}
               className="shrink-0 px-3 sm:px-5 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-semibold text-xs flex items-center gap-1.5 transition-all shadow-lg shadow-cyan-500/20 disabled:opacity-50"
             >
               <span>Enviar</span>

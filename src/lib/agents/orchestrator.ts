@@ -4,6 +4,7 @@ import { allowedSubordinates, resolveDelegationTarget } from '@/lib/agents/deleg
 import { parseManagerPlan } from '@/lib/agents/planner';
 import { callAIProvider, ProviderCall } from '@/lib/agents/provider-adapter';
 import { conversationToolGuidance, respondWithTools, type ToolRunner } from '@/lib/agents/tool-loop';
+import { requestsGeneratedFile } from '@/lib/generated-files';
 
 export type ExecutionResult = {
   reply: string;
@@ -89,7 +90,7 @@ export async function executeAgentChat(
   const plan = parseManagerPlan(rawPlan, subordinates.map(item => item.id));
   if (plan.decision === 'direct') {
     log({ agentId: agent.id, agentName: agent.name, type: 'completed', message: agent.name + ' resolvió la consulta directamente.' });
-    const reply = toolRunner && agent.enabledPluginIds?.length
+    const reply = toolRunner && (agent.enabledPluginIds?.length || requestsGeneratedFile(userMessage))
       ? await respondWithTools(agent, buildAgentPrompt(agent, userMessage, chatHistory), apiKeys, providerCall, toolRunner)
       : plan.directResponse;
     return { reply: reply.slice(0, 11_500), logs };

@@ -4,7 +4,9 @@ export async function analyzeWithGroq(prompt: string, apiKey: string, model: str
   if (!apiKey) throw new Error('PROVIDER_CREDENTIAL_REQUIRED');
   const client = new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1', fetch: (input, options) => globalThis.fetch(input, { ...options, redirect: 'error' }), timeout: 25_000, maxRetries: 1 });
   const response = await client.chat.completions.create({
-    model, max_tokens: 1200, messages: [{ role: 'user', content: prompt }],
+    // Jetree uses JSON decisions and executes tools only through its own
+    // authorization loop. Native calls without declared tools fail on Groq.
+    model, max_tokens: 1200, tool_choice: 'none', messages: [{ role: 'user', content: prompt }],
   });
   return response.choices[0].message.content;
 }

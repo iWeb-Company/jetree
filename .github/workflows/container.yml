@@ -18,8 +18,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Pull pinned Node image with registry fallback
+        run: node scripts/resolve-node-image.mjs >> "$GITHUB_ENV"
       - name: Build production container with public synthetic configuration
-        run: docker build --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY -t jetree:ci .
+        run: docker build --build-arg NODE_IMAGE --build-arg NEXT_PUBLIC_SUPABASE_URL --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY -t jetree:ci .
       - name: Create synthetic server configuration and validate Compose
         run: |
           sudo install -d -m 700 /opt/jetree/secrets
@@ -53,6 +55,7 @@ jobs:
           docker exec jetree-ci node scripts/healthcheck.mjs
           test "$(docker exec jetree-ci id -u)" = 1000
           node tests/integration/auth-smoke.mjs
+          docker exec jetree-ci node scripts/mcp-schema-smoke.mjs
           curl --fail --silent http://127.0.0.1:3057/api/health
       - name: Verify missing configuration fails closed
         run: |

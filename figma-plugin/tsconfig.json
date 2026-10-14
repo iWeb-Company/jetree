@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "es2020", "module": "esnext", "moduleResolution": "bundler", "lib": ["es2020", "dom"], "types": ["@figma/plugin-typings"], "strict": true, "noEmit": true, "skipLibCheck": true },
+  "include": ["*.ts", "../src/lib/figma-contract.ts"]
+}

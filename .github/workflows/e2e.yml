@@ -41,6 +41,11 @@ jobs:
           node tests/integration/telegram-audio.mjs
           node tests/integration/gmail-search-tasks.mjs
           node tests/integration/telegram-tools.mjs
+          node tests/integration/chat-images.mjs
+          node tests/integration/chat-files.mjs
+          node tests/integration/figma.mjs
+          node tests/integration/coding-sessions.mjs
+          node tests/integration/custom-mcp.mjs
       - name: Save API connection screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,6 +55,12 @@ jobs:
             artifacts/api-connections-*.png
             artifacts/tasks-grouped-*.png
             artifacts/telegram-tools-*.png
+            artifacts/chat-images-*.png
+            artifacts/chat-files-*.png
+            artifacts/figma-*.png
+            artifacts/coding-*.png
+            artifacts/custom-mcp-*.png
+            artifacts/notes-mcp-*.png
       - name: Stop disposable database
         if: always()
         run: npx --yes supabase@2.120.0 stop --workdir "$RUNNER_TEMP/jetree-supabase" --no-backup

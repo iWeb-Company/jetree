@@ -1,0 +1,33 @@
+name: Verify coding runner
+on:
+  pull_request:
+  push:
+    branches: [dev]
+permissions:
+  contents: read
+jobs:
+  windows-files:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify Windows snapshots, junctions and private ACLs
+        run: node --test coding-runner/test/*.test.mjs
+  isolated-code:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test coding-runner/test/*.test.mjs
+      - name: Pull pinned Node image with registry fallback
+        run: node scripts/resolve-node-image.mjs >> "$GITHUB_ENV"
+      - name: Build pinned experimental runner
+        run: docker build --build-arg NODE_IMAGE -t jetree-code:opencode-1.19.0 coding-runner
+      - name: Verify actual engine tools and isolation without live credentials
+        run: node coding-runner/test/docker.mjs

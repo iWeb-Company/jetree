@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
+import CodingSessionsPanel from '@/components/CodingSessionsPanel';
 import DepartmentTree from '@/components/DepartmentTree';
 import AgentCard from '@/components/AgentCard';
 import AgentModal from '@/components/AgentModal';
@@ -26,6 +27,9 @@ function mapAgentRow(row: any): Agent {
     subordinateIds: row.subordinate_ids || [],
     provider: row.provider,
     model: row.model,
+    visionModel: row.vision_model || undefined,
+    imageProvider: row.image_provider || undefined,
+    imageModel: row.image_model || undefined,
     systemPrompt: row.system_prompt || '',
     enabledPluginIds: row.enabled_tool_ids || [],
     status: row.status || 'idle',
@@ -61,7 +65,7 @@ function mapTaskRow(row: any): Task {
 
 export default function Home() {
   // Navegación de pestañas
-  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity' | 'coding'>('overview');
 
   // Filtro por departamento (para Dashboard General, Estructura de Nodos y Agentes IA)
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
@@ -127,11 +131,19 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const status = params.get('tool_connection');
-    if (!status) return;
+    const mcpStatus=params.get('customMcp');
+    if (!status&&!mcpStatus) return;
     setIsToolConnectionsOpen(true);
     if (status === 'error') window.alert(`No se pudo conectar la herramienta (${params.get('code') || 'error'}).`);
+    if(mcpStatus==='auth_error')window.alert('No se pudo autorizar el MCP. Volvé a conectarlo desde Herramientas.');
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
+
+  useEffect(()=>{
+    let active=true;
+    const refresh=async()=>{try{const {data:{session:current}}=await supabase.auth.getSession();if(!current)return;const response=await fetch('/api/agents',{headers:{Authorization:'Bearer '+current.access_token},cache:'no-store'});if(response.ok&&active)setAgents(((await response.json()).agents||[]).map(mapAgentRow));}catch{/* Keep current agent state on a temporary refresh failure. */}};
+    window.addEventListener('jetree-custom-mcp-updated',refresh);return()=>{active=false;window.removeEventListener('jetree-custom-mcp-updated',refresh);};
+  },[session?.user?.id]);
 
   const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'facundod@iwebtecnology.com,valentind@iwebtecnology.com,tomasb@iwebtecnology.com')
     .split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
@@ -386,6 +398,9 @@ export default function Home() {
         role_type: savedAgent.roleType,
         provider: savedAgent.provider,
         model: savedAgent.model,
+        vision_model: savedAgent.visionModel || null,
+        image_provider: savedAgent.imageProvider || null,
+        image_model: savedAgent.imageModel || null,
         system_prompt: savedAgent.systemPrompt,
         subordinate_ids: savedAgent.subordinateIds || [],
         enabled_tool_ids: savedAgent.enabledPluginIds || [],
@@ -712,7 +727,7 @@ export default function Home() {
 
         <nav aria-label="Navegación móvil" className="md:hidden flex flex-wrap gap-2 border-b border-cyan-950/40 p-3">
           {([
-            ['overview', 'Panel General'], ['departments', 'Estructura de Nodos'],
+            ['coding', 'Código'], ['overview', 'Panel General'], ['departments', 'Estructura de Nodos'],
             ['agents', 'Agentes IA'], ['activity', 'Monitoreo en Vivo'],
           ] as const).map(([tab, label]) => (
             <button key={tab} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-xs ${activeTab === tab ? 'bg-cyan-500/20 text-cyan-200' : 'bg-gray-900 text-gray-300'}`}>{label}</button>
@@ -729,7 +744,7 @@ export default function Home() {
           )}
 
           {/* Métricas Corporativas Rápidas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
+          {activeTab !== 'coding' && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
 
             <div className="bg-[#0b101d] border border-cyan-950/60 rounded-xl p-5 shadow-sm">
               <div className="flex justify-between items-start">
@@ -787,11 +802,12 @@ export default function Home() {
               </p>
             </div>
 
-          </div>
+          </div>}
 
           {/* -------------------------------------------------------- */}
           {/* PESTAÑA 1: PANEL GENERAL (OVERVIEW)                     */}
           {/* -------------------------------------------------------- */}
+          {activeTab === 'coding' && <CodingSessionsPanel agents={agents} />}
           {activeTab === 'overview' && (
             <div className="space-y-8">
               {/* Tablero Kanban de Tareas con Filtro por Departamento */}
