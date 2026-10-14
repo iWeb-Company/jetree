@@ -5,6 +5,7 @@ import { toolErrorMessage } from '@/lib/tool-feedback';
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import FigmaConnectionsPanel from './FigmaConnectionsPanel';
+import CustomMcpConnectionsPanel from './CustomMcpConnectionsPanel';
 
 type Connection = { provider: 'github' | 'google_drive' | 'gmail'; status: string; scopes: string[]; expires_at: string | null; account_label: string | null; githubAccess?: 'public' | 'private' };
 type Approval = { id: string; agent_id: string; provider: string; tool_id: string; operation: string; input: Record<string, unknown>; created_at: string };
@@ -78,7 +79,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
     finally { setBusy(''); }
   };
 
-  const providerName = (provider: string) => provider === 'figma' ? 'Figma' : provider === 'github' ? 'GitHub' : provider === 'gmail' ? 'Gmail' : provider === 'web_search' ? 'Internet y YouTube' : 'Google Drive';
+  const providerName = (provider: string) => provider==='custom_mcp'?'MCP personalizado':provider === 'figma' ? 'Figma' : provider === 'github' ? 'GitHub' : provider === 'gmail' ? 'Gmail' : provider === 'web_search' ? 'Internet y YouTube' : 'Google Drive';
   const connectorCards: Array<{ id: Connection['provider']; icon: string; title: string; description: string; scopes: string }> = [
     { id: 'github', icon: '🐙', title: 'GitHub', description: 'Elegí si el agente trabajará solo con repositorios públicos o también con los privados que autorices.', scopes: 'El acceso se limita al alcance que elijas; cada escritura requiere aprobación.' },
     { id: 'gmail', icon: '✉️', title: 'Gmail', description: 'Buscá y leé correos. Revisá y aprobá antes de enviar, contestar o modificar tu buzón.', scopes: 'Permiso para leer, enviar y mover correos a la papelera.' },
@@ -120,6 +121,7 @@ export default function ToolConnectionsModal({ isOpen, onClose }: { isOpen: bool
       </section>
 
       <FigmaConnectionsPanel headers={headers} />
+      <CustomMcpConnectionsPanel headers={headers} />
       <section className="space-y-3"><h4 className="text-sm font-semibold text-white">Aprobaciones pendientes ({approvals.length})</h4>
         {approvals.length === 0 ? <p className="text-xs text-gray-500">No hay escrituras esperando aprobación.</p> : approvals.map(item => <article key={item.id} className="space-y-2 rounded-xl border border-amber-800/50 bg-amber-950/10 p-3">
           <div className="text-xs text-amber-200">{providerName(item.provider)} · {item.operation} · Agente {item.agent_id}</div>

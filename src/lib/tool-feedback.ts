@@ -2,6 +2,13 @@ import type { ChatMessage } from '@/types';
 
 export function toolErrorMessage(code: string) {
   switch (code) {
+    case 'MCP_AUTH_REQUIRED': return 'El MCP necesita autorización. Reconectalo desde Herramientas → MCP personalizados.';
+    case 'MCP_CATALOG_CHANGED': return 'La herramienta MCP cambió. Actualizá su catálogo y prepará una aprobación nueva antes de ejecutarla.';
+    case 'MCP_SCHEMA_INVALID': return 'Los argumentos o el resultado no cumplen el esquema MCP dentro de los límites de validación.';
+    case 'MCP_BUSY': return 'El servidor MCP tiene otra operación en curso. Esperá a que termine.';
+    case 'MCP_RATE_LIMITED': return 'El servidor MCP alcanzó su cuota. No se repitió la acción.';
+    case 'MCP_TOOL_FAILED': return 'El servidor MCP informó que la herramienta falló. Revisá el resultado antes de pedir una nueva acción.';
+    case 'MCP_CONNECTION_FAILED': return 'No se pudo completar la conexión MCP. Una acción remota puede haber ocurrido; revisá el servidor antes de repetirla.';
     case 'FIGMA_PAIR_INVALID': return 'El código de Figma venció o ya fue usado. Generá uno nuevo en Conectores → Figma.';
     case 'FIGMA_PAIR_WAITING': return 'Todavía no aparece la vinculación en el archivo autorizado. Guardá Figma, esperá la sincronización y verificá nuevamente.';
     case 'FIGMA_PAIR_BUSY': return 'Hay una edición en curso en este archivo. Esperá que termine antes de verificar otra vinculación.';

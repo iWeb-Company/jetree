@@ -1,5 +1,6 @@
 export default {
   output: 'standalone',
+  serverExternalPackages: ['ajv'],
   poweredByHeader: false,
   async headers() {
     return [{

@@ -131,11 +131,19 @@ export default function Home() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const status = params.get('tool_connection');
-    if (!status) return;
+    const mcpStatus=params.get('customMcp');
+    if (!status&&!mcpStatus) return;
     setIsToolConnectionsOpen(true);
     if (status === 'error') window.alert(`No se pudo conectar la herramienta (${params.get('code') || 'error'}).`);
+    if(mcpStatus==='auth_error')window.alert('No se pudo autorizar el MCP. Volvé a conectarlo desde Herramientas.');
     window.history.replaceState({}, '', window.location.pathname);
   }, []);
+
+  useEffect(()=>{
+    let active=true;
+    const refresh=async()=>{try{const {data:{session:current}}=await supabase.auth.getSession();if(!current)return;const response=await fetch('/api/agents',{headers:{Authorization:'Bearer '+current.access_token},cache:'no-store'});if(response.ok&&active)setAgents(((await response.json()).agents||[]).map(mapAgentRow));}catch{/* Keep current agent state on a temporary refresh failure. */}};
+    window.addEventListener('jetree-custom-mcp-updated',refresh);return()=>{active=false;window.removeEventListener('jetree-custom-mcp-updated',refresh);};
+  },[session?.user?.id]);
 
   const adminEmails = (process.env.NEXT_PUBLIC_ADMIN_EMAILS || 'facundod@iwebtecnology.com,valentind@iwebtecnology.com,tomasb@iwebtecnology.com')
     .split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
