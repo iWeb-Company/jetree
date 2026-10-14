@@ -83,6 +83,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/chat-images.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/figma.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/coding.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/custom-mcp.sql
       - name: Replay the audited existing schema and reconcile
         run: |
           psql -X -v ON_ERROR_STOP=1 -c 'create database jetree_replay'

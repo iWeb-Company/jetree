@@ -55,6 +55,7 @@ jobs:
           docker exec jetree-ci node scripts/healthcheck.mjs
           test "$(docker exec jetree-ci id -u)" = 1000
           node tests/integration/auth-smoke.mjs
+          docker exec jetree-ci node scripts/mcp-schema-smoke.mjs
           curl --fail --silent http://127.0.0.1:3057/api/health
       - name: Verify missing configuration fails closed
         run: |

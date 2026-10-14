@@ -16,6 +16,8 @@ const cases = [
   ['GET', '/api/provider-connections', 401],
   ['POST', '/api/provider-connections', 401],
   ['GET', '/api/tool-connections', 401],
+  ['GET', '/api/custom-mcp', 401],
+  ['POST', '/api/custom-mcp', 401],
   ['GET', '/api/agent-tools', 401],
   ['GET', '/api/figma', 401],
   ['GET', '/api/coding-sessions', 401],
