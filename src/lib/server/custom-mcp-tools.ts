@@ -49,6 +49,9 @@ export async function executeCustomMcpTool(userId:string,agentId:string,operatio
       if(!tool||mcpDefinitionHash(tool)!==input._definitionHash||connection.configuration_version!==input._configurationVersion)throw new Error('MCP_CATALOG_CHANGED');
       if(!approved&&current.read_only_tools[tool.name]!==mcpDefinitionHash(tool))throw new Error('TOOL_APPROVAL_NOT_PENDING');
       await validateMcpSchema(tool.inputSchema,input.arguments);
+      const latest=await assignedConnection(userId,agentId,id);
+      if(latest.configuration_version!==input._configurationVersion)throw new Error('MCP_CATALOG_CHANGED');
+      if(!approved&&latest.read_only_tools[tool.name]!==mcpDefinitionHash(tool))throw new Error('TOOL_APPROVAL_NOT_PENDING');
       const response=await client.callTool({name:tool.name,arguments:input.arguments as Record<string,unknown>},undefined,{timeout:20000});
       if(response.isError)throw new Error('MCP_TOOL_FAILED');
       if(tool.outputSchema)await validateMcpSchema(tool.outputSchema,response.structuredContent);

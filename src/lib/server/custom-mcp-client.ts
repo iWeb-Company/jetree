@@ -79,7 +79,7 @@ export async function withMcpClient<T>(userId:string,id:string,action:(client:Cl
   let client:Client|undefined;let transport:Transport|undefined;let redirect:string|undefined;
   try {
     const connection=await ownedMcpConnection(userId,id);if(options.version&&connection.configuration_version!==options.version)throw new Error('MCP_AUTH_REQUIRED');
-    const secret: McpSecret=JSON.parse(decryptProviderSecret(connection));const endpoint=mcpUrl(connection.url);const hadCredentials=Boolean(secret.tokens);
+    const secret: McpSecret=JSON.parse(decryptProviderSecret(connection));const endpoint=mcpUrl(connection.url);
     const save=async()=>{
       boundedMcpJson(secret,64000);
       const {data,error}=await db.from('custom_mcp_connections').update({...encryptProviderSecret(JSON.stringify(secret)),updated_at:new Date().toISOString()}).eq('id',id).eq('user_id',userId).eq('lock_ticket',ticket).neq('status','revoked').select('id').maybeSingle();
@@ -92,7 +92,9 @@ export async function withMcpClient<T>(userId:string,id:string,action:(client:Cl
       async state(){
         if(!options.interactive)throw new Error('MCP_AUTH_REQUIRED');
         if(!state){
-          if(hadCredentials){connection.configuration_version++;const {error}=await db.from('custom_mcp_connections').update({configuration_version:connection.configuration_version,read_only_tools:{}}).eq('id',id).eq('user_id',userId).eq('lock_ticket',ticket).neq('status','revoked');if(error)throw new Error('MCP_STORAGE_FAILED');}
+          // A previous invalid_grant may already have erased the old tokens.
+          // Every fresh consent invalidates permissions bound to the old account.
+          connection.configuration_version++;const {error:versionError}=await db.from('custom_mcp_connections').update({configuration_version:connection.configuration_version,read_only_tools:{}}).eq('id',id).eq('user_id',userId).eq('lock_ticket',ticket).neq('status','revoked');if(versionError)throw new Error('MCP_STORAGE_FAILED');
           state=randomBytes(32).toString('base64url');await db.from('custom_mcp_oauth_states').delete().eq('connection_id',id).eq('user_id',userId);
           const {error}=await db.from('custom_mcp_oauth_states').insert({state_hash:mcpStateHash(state),connection_id:id,user_id:userId,configuration_version:connection.configuration_version,expires_at:new Date(Date.now()+600000).toISOString()});if(error)throw new Error('MCP_STORAGE_FAILED');}
         return state;

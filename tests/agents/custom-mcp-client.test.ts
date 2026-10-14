@@ -37,6 +37,9 @@ test('OAuth uses PKCE, one-time owned state, fixed resource, encrypted tokens an
   h.expire();await h.library.withMcpClient(h.user,h.id,async client=>(await client.listTools()).tools.length,{networkFactory:h.networkFactory});
   assert.ok(h.networkCalls.some(call=>call.url.endsWith('/token')&&String(call.body).includes('grant_type=refresh_token')));
   h.expire(true);await assert.rejects(h.library.withMcpClient(h.user,h.id,async()=>assert.fail('No tool with expired grant'),{networkFactory:h.networkFactory}),/MCP_AUTH_REQUIRED/);assert.equal(h.row.status,'auth_required');
+  const oldVersion=h.row.configuration_version;h.row.read_only_tools.lookup='old-account-policy';
+  const renewed=await h.library.withMcpClient(h.user,h.id,async()=>assert.fail('No tool before fresh consent'),{interactive:true,networkFactory:h.networkFactory});
+  assert.ok('authorizationUrl' in renewed);assert.equal(h.row.configuration_version,oldVersion+1);assert.deepEqual(h.row.read_only_tools,{},'Consent clears old permissions even after invalid_grant erased tokens');
  }finally{h.restore();}
 });
 test('owner, assignment and exact schema permissions are checked before creating an approval',async()=>{
