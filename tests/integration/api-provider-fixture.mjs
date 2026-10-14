@@ -65,7 +65,7 @@ globalThis.fetch = async (input, options) => {
     const operation = url.pathname.split('/').at(-1);
     const requestBody = options?.body instanceof FormData ? Object.fromEntries(options.body.entries()) : options?.body ? JSON.parse(options.body) : {};
     await mkdir('artifacts', { recursive: true });
-    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id, replyMarkup: requestBody.reply_markup, creditsNotice: requestBody.text?.includes('no tiene saldo suficiente') === true }) + '\n');
+    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id, replyMarkup: requestBody.reply_markup, creditsNotice: requestBody.text?.includes('no tiene saldo suficiente') === true, modelUnavailableNotice: requestBody.text?.includes('El modelo del agente no está disponible') === true }) + '\n');
     if (operation === 'getFile') return Response.json({ ok: true, result: requestBody.file_id?.startsWith('synthetic_image') ? { file_path: 'photos/synthetic.png', file_size: syntheticImage.length } : { file_path: 'voice/synthetic.oga', file_size: 4 } });
     if (operation === 'synthetic.oga') return new Response('ogg!');
     if (operation === 'synthetic.png') return new Response(syntheticImage, { headers: { 'Content-Type': 'image/png' } });
@@ -105,6 +105,7 @@ globalThis.fetch = async (input, options) => {
       assert.equal(body.contents[0].parts[1].inlineData.mimeType, 'audio/ogg');
       return Response.json({ candidates: [{ content: { parts: [{ text: 'Respondé: audio comprendido' }] } }] });
     }
+    if (issuer[1] === 'custom' && body.model === 'synthetic-retired-model') return Response.json({ error: { message: 'Synthetic model unavailable', code: 404 } }, { status: 404 });
     assert.ok(['synthetic-deepseek','synthetic-custom:free','synthetic-groq'].includes(body.model));
     const toolPrompt = body.messages?.map(item => item.content).join('\n') || '';
     if (toolPrompt.includes('[Telegram tools CI]')) {

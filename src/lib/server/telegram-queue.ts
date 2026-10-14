@@ -1,4 +1,5 @@
 import { getServiceSupabase } from '@/lib/server/auth';
+import {permanentProviderFailure,providerErrorMessage} from '@/lib/agents/provider-adapter';
 import { decryptProviderSecret, getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import type { Agent } from '@/types';
 import { assertTelegramOwnerAccess, reserveTelegramExecution } from '@/lib/telegram-worker-guards';
@@ -37,7 +38,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     const rawReason = error instanceof Error ? error.message : '';
     let reason = /^[A-Z0-9_]{1,80}$/.test(rawReason) ? rawReason : 'EXECUTION_FAILED';
     if (update.image_generation_started && update.status !== 'delivery_pending' && !reason.startsWith('IMAGE_')) reason = 'IMAGE_GENERATION_UNCERTAIN';
-    const terminal = attempt >= MAX_ATTEMPTS || reason.startsWith('IMAGE_') || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
+    const terminal = attempt >= MAX_ATTEMPTS || permanentProviderFailure(reason) || reason.startsWith('IMAGE_') || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
     await service.from('telegram_updates').update({
       status: terminal ? 'failed' : (update.status === 'delivery_pending' ? 'delivery_pending' : 'pending'),
       attempts: attempt, next_attempt_at: backoff(attempt), locked_at: null,
@@ -47,6 +48,9 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       status: terminal ? 'failed' : 'in_progress', retry_count: Math.max(0, attempt - 1), last_error: reason,
       updated_at: new Date().toISOString(),
     }).eq('id', taskId || update.task_id);
+    if(terminal&&botToken&&(reason.startsWith('PROVIDER_')||reason==='AGENT_CONTEXT_TOO_LARGE'||reason==='UNSUPPORTED_PROVIDER')){
+      await sendTelegram(botToken,Number(update.chat_id),providerErrorMessage(reason)).catch(()=>{});
+    }
     if (terminal && reason.startsWith('IMAGE_') && botToken) {
       const hint = reason === 'IMAGE_DELIVERY_UNCERTAIN' ? 'La imagen quedó guardada en el chat web, pero no pude confirmar su entrega en Telegram. Revisá el chat antes de pedirla de nuevo.' : imageErrorMessage(reason);
       await sendTelegram(botToken, Number(update.chat_id), `${hint}\n\n${imageModelAdvice}`).catch(() => {});

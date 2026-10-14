@@ -20,6 +20,9 @@ function safeProviderError(error: unknown): AgentEngineError {
     return new AgentEngineError('PROVIDER_AUTH_FAILED');
   }
   if (status === 429 || /rate[_ -]?limit|quota/.test(detail)) return new AgentEngineError('PROVIDER_RATE_LIMITED');
+  if (status === 402) return new AgentEngineError('PROVIDER_CREDITS_REQUIRED');
+  if (status === 404 || /model[_ -]?(?:not[_ -]?found|unavailable)|no endpoints found/.test(detail)) return new AgentEngineError('PROVIDER_MODEL_UNAVAILABLE');
+  if (status === 400 || status === 413 || status === 422) return new AgentEngineError('PROVIDER_REQUEST_REJECTED');
   if (/timeout|timed out|aborterror/.test(detail) || candidate?.name === 'AbortError') {
     return new AgentEngineError('PROVIDER_TIMEOUT');
   }
@@ -44,12 +47,19 @@ export async function callAIProvider(agent: Agent, prompt: string, apiKeys: Reco
   }
 }
 
+export function permanentProviderFailure(code:string):boolean {
+  return ['PROVIDER_AUTH_FAILED','PROVIDER_CREDENTIAL_REQUIRED','PROVIDER_CREDITS_REQUIRED','PROVIDER_MODEL_UNAVAILABLE','PROVIDER_REQUEST_REJECTED','AGENT_CONTEXT_TOO_LARGE','UNSUPPORTED_PROVIDER'].includes(code);
+}
+
 export function providerErrorMessage(code: string): string {
   switch (code) {
     case 'MODEL_DEVICE_OFFLINE': return 'Tu conector personal está desconectado o fue revocado. Encendelo y volvé a intentar. No se usó la API.';
     case 'MODEL_DEVICE_UNAVAILABLE': return 'La conexión personal no pudo completar la respuesta. Revisá el conector; no se cambió a la API.';
     case 'MODEL_DEVICE_PROVIDER_UNSUPPORTED': return 'Este proveedor todavía no está habilitado en el conector personal.';
     case 'PROVIDER_AUTH_FAILED': return 'El proveedor rechazó la credencial. Revisá la conexión API.';
+    case 'PROVIDER_MODEL_UNAVAILABLE': return 'El modelo del agente no está disponible en el proveedor. Elegí otro modelo en Editar agente antes de volver a enviar el pedido.';
+    case 'PROVIDER_CREDITS_REQUIRED': return 'El proveedor requiere saldo para completar el pedido. Revisá tu cuenta o elegí otro modelo disponible.';
+    case 'PROVIDER_REQUEST_REJECTED': return 'El proveedor rechazó el pedido o la configuración del modelo. Revisá el modelo del agente antes de volver a intentarlo.';
     case 'PROVIDER_RATE_LIMITED': return 'El proveedor alcanzó un límite de uso o cuota. Revisá la cuenta e intentá más tarde.';
     case 'PROVIDER_TIMEOUT': return 'El proveedor tardó demasiado en responder. La ejecución quedó como fallida.';
     case 'PROVIDER_UNAVAILABLE': return 'El proveedor está temporalmente no disponible.';
