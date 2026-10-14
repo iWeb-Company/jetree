@@ -1,4 +1,7 @@
 export const FILE_TOOL_ID = 'jetree-files';
+export function requestsGeneratedFile(text: string): boolean {
+  return /\b(pdf|excel|xlsx|html)\b/i.test(text.split('Solicitud actual:\n').at(-1) || text);
+}
 export type FileFormat = 'pdf' | 'xlsx' | 'html';
 export type FileRef = { id: string; name: string; mimeType: string; byteSize: number };
 export type FileSpec = { format: FileFormat; name: string; title: string; content?: string; sheets?: Array<{ name: string; rows: Array<Array<string | number | boolean | null>> }> };

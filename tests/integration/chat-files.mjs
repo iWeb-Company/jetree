@@ -26,9 +26,11 @@ try {
   department=db(await service.from('departments').insert({name:'Files CI',created_by:owner.id}).select('id').single());
   db(await service.from('department_members').insert({department_id:department.id,user_id:member.id}));
   const api=(user,path,body)=>fetch(origin+path,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${user.token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});
-  let agent;
+  let agent; let specialistId;
   for(const role of ['independent','manager']) {
     agent=db(await service.from('agents').insert({department_id:department.id,created_by:owner.id,name:'Files '+role,role_type:role,provider:'custom',model:'synthetic-custom:free',enabled_tool_ids:[]}).select('id').single());
+    if (role === 'independent') specialistId = agent.id;
+    else db(await service.from('agents').update({subordinate_ids:[specialistId]}).eq('id',agent.id));
     for(const format of ['pdf','xlsx','html']) {
       const response=await api(owner,'/api/agents/chat',{agentId:agent.id,message:`[Files CI ${format}] Creá un archivo ${format}`});
       const body=await response.json();assert.equal(response.status,200,body.error);assert.equal(body.files.length,1);

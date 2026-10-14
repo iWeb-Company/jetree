@@ -109,6 +109,7 @@ globalThis.fetch = async (input, options) => {
     assert.ok(['synthetic-deepseek','synthetic-custom:free','synthetic-groq'].includes(body.model));
     const toolPrompt = body.messages?.map(item => item.content).join('\n') || '';
     const fileFormat = [...toolPrompt.matchAll(/\[Files CI (pdf|xlsx|html)\]/g)].at(-1)?.[1];
+    if (fileFormat && toolPrompt.includes('Contrato directo:')) return Response.json({ choices: [{ message: { content: JSON.stringify({ decision: 'direct', managerNotes: 'Internal file capability', directResponse: 'Must call file tool next' }) } }] });
     if (fileFormat) return Response.json({ choices: [{ message: { content: JSON.stringify({ toolId: 'jetree-files', operation: 'create_file', input: fileFormat === 'xlsx' ? { format: 'xlsx', name: 'Presupuesto', title: 'Presupuesto', sheets: [{ name: 'Datos', rows: [['Concepto','Importe'],['Prueba',42]] }] } : { format: fileFormat, name: 'Informe', title: 'Prueba', content: fileFormat === 'pdf' ? 'Informe sintético con información verificada.' : '<!doctype html><html><body><h1>Prueba</h1></body></html>' } }) } }] });
     if (toolPrompt.includes('[Telegram tools CI]')) {
       let decision;
