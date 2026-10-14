@@ -63,6 +63,19 @@ try {
   }
   const events=(await readFile('artifacts/telegram-fixture-events.jsonl','utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(events.filter(e=>e.operation==='sendDocument'&&String(e.chatId)==='667788').length,3);
+  // Only this disposable local DB: exhaust and restore the synthetic workspace quota.
+  const date=new Date().toISOString().slice(0,10);
+  const usage=db(await service.from('workspace_daily_execution_usage').select('executions').eq('usage_date',date).single());
+  try {
+    db(await service.from('workspace_daily_execution_usage').update({executions:100}).eq('usage_date',date));
+    assert.equal((await post({update_id:9610,message:{chat:{id:778899},text:'Creá un HTML de prueba'}})).status,200);
+    let denied;
+    for(let i=0;i<150;i++){denied=db(await service.from('telegram_updates').select('status,last_error,attempts,file_generation_started').eq('bot_id',bot.id).eq('update_id',9610).maybeSingle());if(denied?.status==='failed')break;await new Promise(r=>setTimeout(r,200));}
+    assert.equal(denied?.last_error,'WORKSPACE_EXECUTION_LIMIT_REACHED');assert.equal(denied.attempts,1);assert.equal(denied.file_generation_started,false);
+    await new Promise(r=>setTimeout(r,300));
+    const notices=(await readFile('artifacts/telegram-fixture-events.jsonl','utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(notices.filter(e=>String(e.chatId)==='778899'&&e.workspaceQuotaNotice).length,1);
+  } finally {db(await service.from('workspace_daily_execution_usage').update({executions:usage.executions}).eq('usage_date',date));}
   browser=await chromium.launch();const page=await browser.newPage();await page.goto(origin);
   await page.locator('input[type=email]').fill(owner.email);await page.locator('input[type=password]').fill(owner.password);await page.getByRole('button',{name:'Acceder al Workspace'}).click();
   await page.getByRole('button',{name:'Cerrar Sesión'}).waitFor({timeout:60000});await page.getByRole('button',{name:'Agentes IA',exact:true}).click();

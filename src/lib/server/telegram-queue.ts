@@ -42,7 +42,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     let reason = /^[A-Z0-9_]{1,80}$/.test(rawReason) ? rawReason : 'EXECUTION_FAILED';
     if (update.image_generation_started && update.status !== 'delivery_pending' && !reason.startsWith('IMAGE_')) reason = 'IMAGE_GENERATION_UNCERTAIN';
     if (update.file_generation_started && update.status !== 'delivery_pending' && !reason.startsWith('FILE_')) reason = 'FILE_GENERATION_UNCERTAIN';
-    const terminal = attempt >= MAX_ATTEMPTS || permanentProviderFailure(reason) || reason.startsWith('FILE_') || reason.startsWith('IMAGE_') || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
+    const terminal = attempt >= MAX_ATTEMPTS || permanentProviderFailure(reason) || reason.startsWith('FILE_') || reason.startsWith('IMAGE_') || ['WORKSPACE_EXECUTION_LIMIT_REACHED', 'EXECUTION_LIMIT_NOT_CONFIGURED', 'BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
     await service.from('telegram_updates').update({
       status: terminal ? 'failed' : (update.status === 'delivery_pending' ? 'delivery_pending' : 'pending'),
       attempts: attempt, next_attempt_at: backoff(attempt), locked_at: null,
@@ -55,6 +55,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     if(terminal&&botToken&&(reason.startsWith('PROVIDER_')||reason==='AGENT_CONTEXT_TOO_LARGE'||reason==='UNSUPPORTED_PROVIDER')){
       await sendTelegram(botToken,Number(update.chat_id),providerErrorMessage(reason)).catch(()=>{});
     }
+    if (terminal && botToken && ['WORKSPACE_EXECUTION_LIMIT_REACHED', 'EXECUTION_LIMIT_NOT_CONFIGURED'].includes(reason)) await sendTelegram(botToken, Number(update.chat_id), reason === 'WORKSPACE_EXECUTION_LIMIT_REACHED' ? 'Se alcanzó el límite diario de ejecuciones de Jetree. Este pedido no se ejecutó. Volvé a enviarlo cuando se renueve el cupo o pedile al administrador que ajuste el límite del workspace.' : 'El límite de ejecuciones de Jetree no está configurado. Este pedido no se ejecutó; el administrador debe revisar la configuración.').catch(() => {});
     if (terminal && reason.startsWith('FILE_') && botToken) await sendTelegram(botToken, Number(update.chat_id), 'No pude confirmar la entrega del archivo. Revisá la conversación web antes de volver a pedirlo; los archivos guardados se pueden descargar allí.').catch(() => {});
     if (terminal && reason.startsWith('IMAGE_') && botToken) {
       const hint = reason === 'IMAGE_DELIVERY_UNCERTAIN' ? 'La imagen quedó guardada en el chat web, pero no pude confirmar su entrega en Telegram. Revisá el chat antes de pedirla de nuevo.' : imageErrorMessage(reason);
