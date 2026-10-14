@@ -34,6 +34,14 @@ test('catalog hashes bind definitions and secrets are redacted in keys and value
  assert.ok(!JSON.stringify(result).includes(secret.token));assert.ok(!JSON.stringify(result).includes('private binary'));
  assert.throws(()=>assertMcpCatalogSafe([{...tools[0],description:secret.token}],secret));assert.equal(safeMcpError(new Error('MCP_SYNTHETIC_PRIVATE_CREDENTIAL')).message,'MCP_CONNECTION_FAILED');
 });
+test('definition pins survive JSONB object ordering but reject changed schema values and arrays',()=>{
+ const tool=normalizeMcpTools([{name:'lookup',description:'docs',inputSchema:{type:'object',properties:{query:{type:'string',enum:['first','second']},limit:{type:'integer'}},required:['query','limit']},annotations:{readOnlyHint:true}}])[0];
+ const reorder=(value:any):any=>Array.isArray(value)?value.map(reorder):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).reverse().map(([key,item])=>[key,reorder(item)])):value;
+ const stored=reorder(tool);assert.notEqual(JSON.stringify(stored),JSON.stringify(tool));assert.equal(mcpDefinitionHash(stored),mcpDefinitionHash(tool));
+ const changed=structuredClone(stored);changed.inputSchema.properties.query.type='number';assert.notEqual(mcpDefinitionHash(changed),mcpDefinitionHash(tool));
+ const arrayChanged=structuredClone(stored);arrayChanged.inputSchema.properties.query.enum.reverse();assert.notEqual(mcpDefinitionHash(arrayChanged),mcpDefinitionHash(tool));
+});
+
 test('schema workers do not block the app on malicious regex',async()=>{
  const schema={type:'object',properties:{query:{type:'string'}},required:['query'],additionalProperties:false};
  await validateMcpSchema(schema,{query:'public'});await assert.rejects(validateMcpSchema(schema,{other:'wrong'}),/SCHEMA_INVALID/);

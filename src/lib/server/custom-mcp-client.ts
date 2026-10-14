@@ -13,7 +13,10 @@ import {boundedMcpJson,mcpText,type CustomMcpTool} from '@/lib/custom-mcp-contra
 
 export type McpSecret={token?:string;headerName?:string;client?:OAuthClientInformationMixed;tokens?:OAuthTokens;expiresAt?:number;verifier?:string;discovery?:OAuthDiscoveryState};
 export type McpConnection={id:string;user_id:string;name:string;url:string;transport:'auto'|'streamable_http'|'sse';auth_mode:'none'|'token'|'oauth';status:string;tools:CustomMcpTool[];read_only_tools:Record<string,string>;configuration_version:number;ciphertext:string;iv:string;auth_tag:string};
-export const mcpDefinitionHash=(tool:CustomMcpTool)=>createHash('sha256').update(JSON.stringify(tool)).digest('hex');
+// PostgreSQL JSONB reorders object keys, including nested schema properties.
+// Preserve arrays and values, but canonicalize object order before pinning.
+const canonicalMcpJson=(value:unknown):unknown=>Array.isArray(value)?value.map(canonicalMcpJson):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([key,item])=>[key,canonicalMcpJson(item)])):value;
+export const mcpDefinitionHash=(tool:CustomMcpTool)=>createHash('sha256').update(JSON.stringify(canonicalMcpJson(tool))).digest('hex');
 export const mcpStateHash=(state:string)=>createHash('sha256').update(state).digest('hex');
 const secretValues=(secret:McpSecret)=>[secret.token,secret.tokens?.access_token,secret.tokens?.refresh_token,secret.client?.client_secret,secret.verifier].filter((item):item is string=>typeof item==='string'&&Boolean(item));
 export function assertMcpCatalogSafe(tools:CustomMcpTool[],secret:McpSecret){const text=JSON.stringify(tools);if(secretValues(secret).some(value=>text.includes(value)))throw new Error('MCP_CATALOG_INVALID');}
