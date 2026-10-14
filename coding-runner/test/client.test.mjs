@@ -26,6 +26,15 @@ test('private key files accept BOM/CRLF without leaking key contents and reject 
   assert.doesNotMatch(JSON.stringify(redactRunnerReport(report,['synthetic-key'])),/synthetic-key/);
   if(process.platform!=='win32'){const {chmod}=await import('node:fs/promises');await chmod(file,0o644);await assert.rejects(runnerKey(file),/PRIVATE_REQUIRED/);}
 });
+test('Jetree connections require explicit local opt-in and cannot change execution scope',()=>{
+ const project={id:'11111111-1111-4111-8111-111111111111',path:'/authorized',testCommand:'node --test',models:[],jetreeModels:true};
+ const job={id:'22222222-2222-4222-8222-222222222222',claimId:'33333333-3333-4333-8333-333333333333',projectId:project.id,prompt:'fix',provider:'gemini',model:'chosen',source:'jetree',inferenceToken:'jci_'+ 'a'.repeat(150),path:'/etc',testCommand:'evil'};
+ assert.equal(runnerJob(job,[project]).project.path,'/authorized');
+ assert.equal(runnerJob(job,[project]).project.testCommand,'node --test');
+ assert.throws(()=>runnerJob(job,[{...project,jetreeModels:false}]),/NOT_AUTHORIZED/);
+ assert.throws(()=>runnerJob({...job,provider:'arbitrary'},[project]),/NOT_AUTHORIZED/);
+ assert.throws(()=>runnerJob({...job,inferenceToken:'provider-key'},[project]),/NOT_AUTHORIZED/);
+});
 
 test('pairing sends no paths or keys and a lost completion response never repeats code',async t=>{
   const root=await mkdtemp(path.join(tmpdir(),'jetree-worker-'));t.after(()=>rm(root,{recursive:true,force:true}));

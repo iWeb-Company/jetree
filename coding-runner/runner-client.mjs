@@ -9,6 +9,7 @@ import { engineConfig } from './opencode.mjs';
 import { providerTarget } from './gateway.mjs';
 import { atomicJson, listenerLock } from './persistence.mjs';
 import { dependencyPolicy } from './dependencies.mjs';
+import {redactActivity} from './activity.mjs';
 
 export function runnerServer(value) {
   const url=new URL(value);
@@ -31,7 +32,7 @@ export async function loadRunnerConfig(file) {
     const root=await realpath(project.path);const gitRoot=(await command('git',['-C',root,'rev-parse','--show-toplevel'])).trim();
     if(await realpath(gitRoot)!==root)throw new Error('PROJECT_ROOT_REQUIRED');
     const models=project.models.map(model=>{providerTarget(model.provider);engineConfig(model.model,'validate');if(typeof model.keyFile!=='string')throw new Error('RUNNER_CONFIG_INVALID');return {provider:model.provider,model:model.model,keyFile:path.resolve(model.keyFile)};});
-    projects.push({localId:project.localId,name:project.name,path:root,testCommand:project.testCommand,dependencies:dependencyPolicy(project.dependencies),models});
+    projects.push({localId:project.localId,name:project.name,path:root,testCommand:project.testCommand,dependencies:dependencyPolicy(project.dependencies),jetreeModels:project.jetreeModels===true,models});
   }
   if(new Set(projects.map(p=>p.localId)).size!==projects.length)throw new Error('RUNNER_CONFIG_INVALID');
   return {name:raw.name,projects};
@@ -44,7 +45,7 @@ export async function connectRunner({server,code,config,connection,request=runne
   const connectionFile=path.join(resolved,'connection.json');
   const guard=await writeFile(connectionFile,'',{flag:'wx',mode:0o600});void guard;
   try {
-    const result=await request(server,null,{action:'pair',code,name:settings.name,projects:settings.projects.map(p=>({localId:p.localId,name:p.name,testCommand:p.testCommand,models:p.models.map(m=>({provider:m.provider,model:m.model}))}))});
+    const result=await request(server,null,{action:'pair',code,name:settings.name,projects:settings.projects.map(p=>({localId:p.localId,name:p.name,testCommand:p.testCommand,jetreeModels:p.jetreeModels,models:p.models.map(m=>({provider:m.provider,model:m.model}))}))});
     if(!/^jcr_[A-Za-z0-9_-]{43}$/.test(result.token)||!Array.isArray(result.projects)||result.projects.length!==settings.projects.length)throw new Error('RUNNER_RESPONSE_INVALID');
     const projects=settings.projects.map(p=>{const registered=result.projects.find(r=>r.local_id===p.localId);if(!registered||!/^[a-f0-9-]{36}$/.test(registered.id))throw new Error('RUNNER_RESPONSE_INVALID');return {...p,id:registered.id};});
     await atomicJson(connectionFile,{server,token:result.token,executorId:result.executorId,projects});
@@ -58,6 +59,10 @@ export async function runnerKey(file) {
 export function runnerJob(job,projects) {
   if(!job||!/^[a-f0-9-]{36}$/.test(job.id)||!/^[a-f0-9-]{36}$/.test(job.claimId)||typeof job.prompt!=='string'||!job.prompt.trim()||job.prompt.length>8000)throw new Error('RUNNER_JOB_INVALID');
   const project=projects.find(p=>p.id===job.projectId);const model=project?.models.find(m=>m.provider===job.provider&&m.model===job.model);
+  if(project&&job.source==='jetree'){
+    if(!project.jetreeModels||!['groq','openrouter','deepseek','openai','gemini','claude'].includes(job.provider)||typeof job.inferenceToken!=='string'||!/^jci_[A-Za-z0-9_.-]{100,250}$/.test(job.inferenceToken))throw new Error('RUNNER_PROJECT_NOT_AUTHORIZED');
+    engineConfig(job.model,'validate');return {project,model:{provider:job.provider,model:job.model}};
+  }
   if(!project||!model)throw new Error('RUNNER_PROJECT_NOT_AUTHORIZED');
   return {project,model};
 }
@@ -81,6 +86,7 @@ export async function listenRunner({connection,requester=runnerRequest,run=runSa
   const request=body=>requester(settings.server,settings.token,body);
   try {
     console.log('Ejecutor conectado. Solo ejecutará los proyectos y modelos registrados.');
+    if(settings.projects.some(p=>p.jetreeModels))await request({action:'capabilities',projectIds:settings.projects.filter(p=>p.jetreeModels).map(p=>p.id)});
     while(!stopping){
       let pending;
       try{pending=JSON.parse(await readFile(ledger,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;}
@@ -96,17 +102,20 @@ export async function listenRunner({connection,requester=runnerRequest,run=runSa
       await atomicJson(ledger,{job});
       let completion;let heartbeat;let key;active=new AbortController();let sequence=0;let failures=0;let sending=false;let stage='preparing';
       const jobCancellation=active;
+      const activities=[];let activitySequence=0;let activitySending=false;
+      const onActivity=event=>{if(activitySequence>=500)return;activities.push({...event,sequence:++activitySequence,label:redactActivity(event.label,[key,settings.token]).slice(0,600),...(event.output?{output:redactActivity(event.output,[key,settings.token]).slice(0,4096)}:{})});};
+      const flushActivity=async()=>{if(activitySending||!activities.length)return false;activitySending=true;const batch=activities.slice(0,20);try{await request({action:'activity',jobId:job.id,claimId:job.claimId,events:batch});activities.splice(0,batch.length);return true;}catch(error){if(['RUNNER_REVOKED','RUNNER_RESULT_REJECTED'].includes(error.message))activities.splice(0,batch.length);return false;}finally{activitySending=false;}};
       const progress=async()=>{if(sending)return;sending=true;try{const result=await request({action:'progress',jobId:job.id,claimId:job.claimId,sequence:++sequence,stage});failures=0;if(result.cancel)jobCancellation.abort();}catch{if(++failures>=3)jobCancellation.abort();}finally{sending=false;}};
       try{
-        const {project,model}=runnerJob(job,settings.projects);key=await runnerKey(model.keyFile);
+        const {project,model}=runnerJob(job,settings.projects);key=job.source==='jetree'?job.inferenceToken:await runnerKey(model.keyFile);
         const output=path.join(root,'runs',job.id);await mkdir(path.dirname(output),{recursive:true,mode:0o700});
-        await progress();heartbeat=setInterval(()=>{readFile(path.join(output,'status.json'),'utf8').then(raw=>{const current=JSON.parse(raw).state;if(current==='running'||current==='verifying')stage=current;}).catch(()=>{}).finally(progress);},10000);
+        await progress();heartbeat=setInterval(()=>{readFile(path.join(output,'status.json'),'utf8').then(raw=>{const current=JSON.parse(raw).state;if(current==='running'||current==='verifying')stage=current;}).catch(()=>{}).finally(()=>{void progress();void flushActivity();});},3000);
         if(active.signal.aborted)throw new Error('RUN_INTERRUPTED');
         await prepare(project.path,output);
-        const report=await run({output,prompt:job.prompt,provider:model.provider,model:model.model,key,testCommand:project.testCommand,dependencies:project.dependencies,signal:active.signal});
+        const report=await run({output,prompt:job.prompt,provider:model.provider,model:model.model,key,testCommand:project.testCommand,dependencies:project.dependencies,signal:active.signal,onActivity,...(job.source==='jetree'?{proxyUrl:runnerServer(settings.server)+'/api/coding-inference'}:{})});
         completion={status:report.state,report:redactRunnerReport(report,[key,settings.token])};
       }catch(error){completion={status:active.signal.aborted?'interrupted':'failed',errorCode:/^[A-Z_]{1,80}$/.test(error.message)?error.message:'RUN_FAILED'};}
-      finally{clearInterval(heartbeat);key=undefined;}
+      finally{clearInterval(heartbeat);for(let retry=0;retry<25&&activities.length;retry++){if(!await flushActivity())break;}key=undefined;}
       // Persist delivery before sending; a dropped response cannot replay code.
       await atomicJson(ledger,{job,completion});
       try{await request({action:'complete',jobId:job.id,claimId:job.claimId,...completion});await unlink(ledger);console.log('Sesión finalizada: '+completion.status);}catch(error){console.log('Resultado preservado localmente; se reenviará al reconectar.');if(['RUNNER_REVOKED','RUNNER_RESULT_REJECTED'].includes(error.message))throw error;await pause(5000);}

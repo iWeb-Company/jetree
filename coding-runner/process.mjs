@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-export function command(program, args, { cwd, timeout = 30000, maxBytes = 2 * 1024 * 1024, env = {}, signal } = {}) {
+export function command(program, args, { cwd, timeout = 30000, maxBytes = 2 * 1024 * 1024, env = {}, signal, onStdout } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(new Error('RUN_INTERRUPTED')); return; }
     const safeArgs = program === 'git' ? ['-c', 'core.fsmonitor=false', ...args] : args;
@@ -13,7 +13,7 @@ export function command(program, args, { cwd, timeout = 30000, maxBytes = 2 * 10
     const timer = setTimeout(() => { problem = new Error('COMMAND_TIMEOUT'); child.kill(); }, timeout);
     for (const stream of [child.stdout, child.stderr]) stream.on('data', data => {
       size += data.length; if (size > maxBytes) { problem = new Error('COMMAND_OUTPUT_LIMIT'); child.kill(); }
-      else { chunks.push(data); if (stream === child.stdout) stdout.push(data); }
+      else { chunks.push(data); if (stream === child.stdout) { stdout.push(data); onStdout?.(data); } }
     });
     child.on('error', error => { cleanup(); reject(error); });
     child.on('close', code => { cleanup(); if (problem) reject(problem);

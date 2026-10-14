@@ -30,8 +30,9 @@ export async function errorCategory(upstream) {
   finally { await reader.cancel().catch(() => {}); }
   return 'UNKNOWN';
 }
-export function gateway({ provider, key, token, model, limit = 40, fetcher = fetch, onDiagnostic = () => {} }) {
-  const target = providerTarget(provider);
+export function gateway({ provider, key, token, model, proxyUrl, limit = 40, fetcher = fetch, onDiagnostic = () => {} }) {
+  const target = proxyUrl||providerTarget(provider);
+  if(proxyUrl){const url=new URL(proxyUrl);if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/api/coding-inference')throw new Error('GATEWAY_CONFIG_INVALID');}
   if (!key || !token || !model || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('GATEWAY_CONFIG_INVALID');
   let calls = 0; let active = 0;
   return http.createServer(async (request, response) => {
@@ -48,7 +49,7 @@ export function gateway({ provider, key, token, model, limit = 40, fetcher = fet
       // Only ordinary inference fields; no caller-selected destination, key, model or headers.
       const allowed = ['model','messages','tools','tool_choice','stream','temperature','top_p','stop','parallel_tool_calls'];
       data = Object.fromEntries(allowed.filter(field => data[field] !== undefined).map(field => [field, data[field]]));
-      if (provider === 'groq') data.messages = groqMessages(data.messages);
+      if (provider === 'groq'&&!proxyUrl) data.messages = groqMessages(data.messages);
       data.max_tokens = 4096;
     } catch { return deny(400); }
     calls++; active++;
@@ -70,7 +71,7 @@ export function gateway({ provider, key, token, model, limit = 40, fetcher = fet
   });
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const server = gateway({ provider: process.env.JETREE_CODE_PROVIDER, key: process.env.JETREE_CODE_API_KEY, token: process.env.JETREE_CODE_GATEWAY_TOKEN, model: process.env.JETREE_CODE_MODEL, onDiagnostic: event => console.log('JETREE_DIAGNOSTIC ' + JSON.stringify(event)) });
+  const server = gateway({ provider: process.env.JETREE_CODE_PROVIDER, key: process.env.JETREE_CODE_API_KEY, proxyUrl:process.env.JETREE_CODE_PROXY_URL, token: process.env.JETREE_CODE_GATEWAY_TOKEN, model: process.env.JETREE_CODE_MODEL, onDiagnostic: event => console.log('JETREE_DIAGNOSTIC ' + JSON.stringify(event)) });
   server.listen(8080, '0.0.0.0');
   for (const signal of ['SIGINT','SIGTERM']) process.on(signal, () => { server.close(); server.closeAllConnections(); });
   setTimeout(() => { server.closeAllConnections(); process.exit(0); }, 8 * 60 * 1000).unref();
