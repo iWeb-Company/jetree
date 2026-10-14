@@ -81,6 +81,7 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f tests/database/api-connections.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/telegram-audio.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/chat-images.sql
+          psql -X -v ON_ERROR_STOP=1 -f tests/database/chat-files.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/figma.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/coding.sql
           psql -X -v ON_ERROR_STOP=1 -f tests/database/custom-mcp.sql

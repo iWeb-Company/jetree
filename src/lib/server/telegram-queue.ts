@@ -11,6 +11,9 @@ import { generationTarget, imageAdvice, imageErrorMessage, imageRequest, needsIm
 import { attachChatImage, cleanupPendingImages, readChatImage, recentConversationImages, saveChatImage } from './chat-image-store';
 import { executeImageChat } from './image-chat';
 import { deliverTelegramImage, downloadTelegramImage } from './telegram-images';
+import { FILE_TOOL_ID, type FileSpec } from '@/lib/generated-files';
+import { saveChatFile, attachChatFiles } from './chat-file-store';
+import { deliverTelegramFiles } from './telegram-files';
 
 const MAX_ATTEMPTS = 5;
 
@@ -38,7 +41,8 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     const rawReason = error instanceof Error ? error.message : '';
     let reason = /^[A-Z0-9_]{1,80}$/.test(rawReason) ? rawReason : 'EXECUTION_FAILED';
     if (update.image_generation_started && update.status !== 'delivery_pending' && !reason.startsWith('IMAGE_')) reason = 'IMAGE_GENERATION_UNCERTAIN';
-    const terminal = attempt >= MAX_ATTEMPTS || permanentProviderFailure(reason) || reason.startsWith('IMAGE_') || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
+    if (update.file_generation_started && update.status !== 'delivery_pending' && !reason.startsWith('FILE_')) reason = 'FILE_GENERATION_UNCERTAIN';
+    const terminal = attempt >= MAX_ATTEMPTS || permanentProviderFailure(reason) || reason.startsWith('FILE_') || reason.startsWith('IMAGE_') || ['BOT_OWNER_ACCESS_REVOKED', 'AGENT_OR_DEPARTMENT_ARCHIVED', 'BOT_AGENT_MISMATCH', 'AUDIO_TOO_LARGE', 'AUDIO_FORMAT_UNSUPPORTED', 'AUDIO_PROVIDER_REQUIRED', 'AUDIO_EMPTY', 'AUDIO_CREDITS_REQUIRED', 'AUDIO_TRANSCRIPTION_AUTH_FAILED', 'AUDIO_TRANSCRIPTION_MODEL_UNAVAILABLE', 'AUDIO_TRANSCRIPTION_REJECTED'].includes(reason);
     await service.from('telegram_updates').update({
       status: terminal ? 'failed' : (update.status === 'delivery_pending' ? 'delivery_pending' : 'pending'),
       attempts: attempt, next_attempt_at: backoff(attempt), locked_at: null,
@@ -51,6 +55,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     if(terminal&&botToken&&(reason.startsWith('PROVIDER_')||reason==='AGENT_CONTEXT_TOO_LARGE'||reason==='UNSUPPORTED_PROVIDER')){
       await sendTelegram(botToken,Number(update.chat_id),providerErrorMessage(reason)).catch(()=>{});
     }
+    if (terminal && reason.startsWith('FILE_') && botToken) await sendTelegram(botToken, Number(update.chat_id), 'No pude confirmar la entrega del archivo. Revisá la conversación web antes de volver a pedirlo; los archivos guardados se pueden descargar allí.').catch(() => {});
     if (terminal && reason.startsWith('IMAGE_') && botToken) {
       const hint = reason === 'IMAGE_DELIVERY_UNCERTAIN' ? 'La imagen quedó guardada en el chat web, pero no pude confirmar su entrega en Telegram. Revisá el chat antes de pedirla de nuevo.' : imageErrorMessage(reason);
       await sendTelegram(botToken, Number(update.chat_id), `${hint}\n\n${imageModelAdvice}`).catch(() => {});
@@ -156,12 +161,14 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       if (update.tool_response && !toolIdentity) throw new Error('TELEGRAM_TOOL_CHAT_NOT_LINKED');
       if (update.tool_response) await requireLiveToolChat();
       await deliverTelegramImage(service, token, update);
+      await deliverTelegramFiles(service, token, update);
       if (!update.response_text_sent) await sendTelegram(token, Number(update.chat_id), update.response_text, toolIdentity ? update.pending_approval_id : undefined);
       await service.from('telegram_updates').update({ status: 'completed', attempts: attempt, locked_at: null, last_error: null, updated_at: new Date().toISOString() }).eq('id', update.id);
       if (update.task_id) await service.from('tasks').update({ status: 'completed', retry_count: attempt - 1, last_error: null, updated_at: new Date().toISOString() }).eq('id', update.task_id);
       return;
     }
     if (update.image_generation_started) throw new Error('IMAGE_GENERATION_UNCERTAIN');
+    if (update.file_generation_started) throw new Error('FILE_GENERATION_UNCERTAIN');
 
     // Plain consent cannot authorize a write. Recover the actual latest draft
     // bound to this private user/chat instead of asking the model to create one.
@@ -326,12 +333,20 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       return { data, error };
     });
     let approvalDraft: { id: string; operation: string; input: unknown } | undefined;
+    const fileSpecs: FileSpec[] = [];
     if (imageRequest(update.message_text).generate) {
       const { error } = await service.from('telegram_updates').update({ image_generation_started: true }).eq('id', update.id);
       if (error) throw new Error('IMAGE_STORAGE_FAILED');
       update.image_generation_started = true;
     }
     const result = await executeImageChat([agent, update.message_text, roster, history, apiKeys, undefined, undefined, async (actingAgent, toolId, operation, input) => {
+      if (toolId === FILE_TOOL_ID) {
+        if (operation !== 'create_file' || fileSpecs.length >= 3) throw new Error('FILE_INPUT_INVALID');
+        const { error } = await service.from('telegram_updates').update({ file_generation_started: true }).eq('id', update.id);
+        if (error) throw new Error('FILE_STORAGE_FAILED');
+        update.file_generation_started = true;
+        fileSpecs.push(input as unknown as FileSpec); return { result: { name: input.name } };
+      }
       if (!toolIdentity) throw new Error('TELEGRAM_TOOL_CHAT_NOT_LINKED');
       await requireLiveToolChat();
       const output = await executeAuthorizedTool(service, bot.owner_user_id, actingAgent.id, toolId, operation, input, undefined, conversationId);
@@ -357,17 +372,22 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
     });
     if (executionError) throw new Error('EXECUTION_LEDGER_SAVE_FAILED');
     const generatedImage = result.generatedImage ? await saveChatImage(service, bot.owner_user_id, agent.id, result.generatedImage.bytes, 'generated') : undefined;
+    const resultFiles = [];
+    for (const spec of fileSpecs) resultFiles.push(await saveChatFile(service, bot.owner_user_id, agent.id, executionId, spec));
     const { data: assistantMessage, error: assistantError } = await service.from('messages').insert({ conversation_id: conversationId, author_user_id: null, role: 'assistant', content: responseText.slice(0, 12000), execution_id: executionId }).select('id').single();
     if (assistantError || !assistantMessage) throw new Error('MESSAGE_SAVE_FAILED');
+    await attachChatFiles(service, resultFiles.map(file => file.id), assistantMessage.id);
     if (generatedImage) await attachChatImage(service, generatedImage.id, assistantMessage.id);
-    const { error: deliverySaveError } = await service.from('telegram_updates').update({ status: 'delivery_pending', response_text: responseText, response_image_id: generatedImage?.id || null, tool_response: toolIdentity, attempts: attempt, last_error: null, updated_at: new Date().toISOString() }).eq('id', update.id);
+    const { error: deliverySaveError } = await service.from('telegram_updates').update({ status: 'delivery_pending', response_text: responseText, response_file_ids: resultFiles.map(file => file.id), response_image_id: generatedImage?.id || null, tool_response: toolIdentity, attempts: attempt, last_error: null, updated_at: new Date().toISOString() }).eq('id', update.id);
     if (deliverySaveError) throw new Error('DELIVERY_SAVE_FAILED');
     // A delivery retry reuses the saved reply instead of paying to transcribe/infer again.
     update.status = 'delivery_pending';
     update.response_text = responseText; update.response_image_id = generatedImage?.id;
+    update.response_file_ids = resultFiles.map(file => file.id);
     await service.from('tasks').update({ result: responseText.slice(0, 12000), retry_count: attempt - 1, last_error: null, updated_at: new Date().toISOString() }).eq('id', task.id);
     if (toolIdentity) await requireLiveToolChat();
     await deliverTelegramImage(service, token, update);
+    await deliverTelegramFiles(service, token, update);
     if (!update.response_text_sent) await sendTelegram(token, Number(update.chat_id), responseText, update.pending_approval_id);
     await service.from('telegram_updates').update({ status: 'completed', locked_at: null, updated_at: new Date().toISOString() }).eq('id', update.id);
     await service.from('tasks').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', task.id);

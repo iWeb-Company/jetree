@@ -69,7 +69,7 @@ globalThis.fetch = async (input, options) => {
     if (operation === 'getFile') return Response.json({ ok: true, result: requestBody.file_id?.startsWith('synthetic_image') ? { file_path: 'photos/synthetic.png', file_size: syntheticImage.length } : { file_path: 'voice/synthetic.oga', file_size: 4 } });
     if (operation === 'synthetic.oga') return new Response('ogg!');
     if (operation === 'synthetic.png') return new Response(syntheticImage, { headers: { 'Content-Type': 'image/png' } });
-    assert.ok(['sendPhoto', 'sendMessage', 'sendChatAction', 'answerCallbackQuery', 'editMessageReplyMarkup', 'setWebhook'].includes(operation));
+    assert.ok(['sendDocument', 'sendPhoto', 'sendMessage', 'sendChatAction', 'answerCallbackQuery', 'editMessageReplyMarkup', 'setWebhook'].includes(operation));
     if (operation === 'sendPhoto' && requestBody.chat_id === '445566' && !failedDeliveries.has('image')) { failedDeliveries.add('image'); return Response.json({ ok: false }, { status: 503 }); }
     if (operation === 'sendMessage' && requestBody.chat_id === 54321 && !failedDeliveries.has(requestBody.chat_id)) {
       failedDeliveries.add(requestBody.chat_id);
@@ -108,6 +108,8 @@ globalThis.fetch = async (input, options) => {
     if (issuer[1] === 'custom' && body.model === 'synthetic-retired-model') return Response.json({ error: { message: 'Synthetic model unavailable', code: 404 } }, { status: 404 });
     assert.ok(['synthetic-deepseek','synthetic-custom:free','synthetic-groq'].includes(body.model));
     const toolPrompt = body.messages?.map(item => item.content).join('\n') || '';
+    const fileFormat = [...toolPrompt.matchAll(/\[Files CI (pdf|xlsx|html)\]/g)].at(-1)?.[1];
+    if (fileFormat) return Response.json({ choices: [{ message: { content: JSON.stringify({ toolId: 'jetree-files', operation: 'create_file', input: fileFormat === 'xlsx' ? { format: 'xlsx', name: 'Presupuesto', title: 'Presupuesto', sheets: [{ name: 'Datos', rows: [['Concepto','Importe'],['Prueba',42]] }] } : { format: fileFormat, name: 'Informe', title: 'Prueba', content: fileFormat === 'pdf' ? 'Informe sintético con información verificada.' : '<!doctype html><html><body><h1>Prueba</h1></body></html>' } }) } }] });
     if (toolPrompt.includes('[Telegram tools CI]')) {
       let decision;
       if (toolPrompt.includes('Contrato de delegación')) {
