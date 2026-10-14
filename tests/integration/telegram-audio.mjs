@@ -69,6 +69,17 @@ try {
   await new Promise(resolve=>setTimeout(resolve,300));
   const notices = (await readFile('artifacts/telegram-fixture-events.jsonl','utf8')).trim().split('\n').map(line=>JSON.parse(line));
   assert.ok(notices.some(e=>e.chatId===98765 && e.creditsNotice),'Missing immediate explanation of insufficient transcription credits');
+  db(await service.from('agents').update({ model: 'synthetic-retired-model' }).eq('id', agent.id));
+  const retiredModel = { update_id: 9005, message: { chat: { id: 87654 }, text: 'Synthetic text request' } };
+  assert.equal((await post(retiredModel)).status, 200);
+  const unavailable = await waitStatus(9005, 'failed');
+  assert.equal(unavailable.last_error, 'PROVIDER_MODEL_UNAVAILABLE');
+  assert.equal(unavailable.attempts, 1);
+  assert.equal(unavailable.pending_approval_id, null);
+  assert.equal((await post(retiredModel)).status, 200);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const providerNotices = (await readFile('artifacts/telegram-fixture-events.jsonl', 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(providerNotices.filter(e => e.chatId === 87654 && e.operation === 'sendMessage' && e.modelUnavailableNotice).length, 1, 'Retired model must produce one immediate notice without replay');
   console.log('PASS immediate webhook processing, Google transcription for free OpenRouter chat, typing, deduplication, cached delivery retry and immediate insufficient-credit notice');
 } finally {
   if (department) {

@@ -58,6 +58,7 @@ jobs:
             artifacts/figma-*.png
             artifacts/coding-*.png
             artifacts/custom-mcp-*.png
+            artifacts/notes-mcp-*.png
       - name: Stop disposable database
         if: always()
         run: npx --yes supabase@2.120.0 stop --workdir "$RUNNER_TEMP/jetree-supabase" --no-backup

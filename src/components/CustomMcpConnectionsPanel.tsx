@@ -1,11 +1,15 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
+import {mcpPresetDefaults,type McpPreset} from '@/lib/mcp-presets';
+import NotesMcpGuide from './NotesMcpGuide';
 type Tool={name:string;description:string;readOnly:boolean;inputSchema:Record<string,unknown>;annotations?:{readOnlyHint?:boolean}};
 type Connection={id:string;name:string;url:string;status:string;auth_mode:string;transport:string;tools:Tool[];agentIds:string[]};
 type Agent={id:string;name:string;role_type:string};
 export default function CustomMcpConnectionsPanel({headers}:{headers:()=>Promise<Record<string,string>>}) {
   const [connections,setConnections]=useState<Connection[]>([]);const [agents,setAgents]=useState<Agent[]>([]);
   const [adding,setAdding]=useState(false);const [name,setName]=useState('');const [url,setUrl]=useState('');const [authMode,setAuthMode]=useState('none');const [transport,setTransport]=useState('auto');
+  const [preset,setPreset]=useState<McpPreset>('custom');
+  const choosePreset=(value:McpPreset)=>{const defaults=mcpPresetDefaults(value);setPreset(value);setAdding(true);setName(defaults.name);setUrl(defaults.url);setAuthMode(defaults.authMode);setTransport(defaults.transport);setHeaderName(defaults.headerName);setToken('');setClientId('');setClientSecret('');setIssuer('');setNotice('');};
   const [token,setToken]=useState('');const [headerName,setHeaderName]=useState('Authorization');const [clientId,setClientId]=useState('');const [clientSecret,setClientSecret]=useState('');const [issuer,setIssuer]=useState('');
   const [busy,setBusy]=useState('');const [notice,setNotice]=useState('');const [search,setSearch]=useState('');
   const refresh=useCallback(async()=>{
@@ -27,9 +31,12 @@ export default function CustomMcpConnectionsPanel({headers}:{headers:()=>Promise
   };
   const inputClass='block w-full rounded-lg border border-gray-700 bg-gray-950 p-2 text-sm text-gray-100';
   return <section className="space-y-4 rounded-xl border border-cyan-950/60 bg-[#05070b] p-4" aria-label="MCP personalizados">
-    <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold text-white">🔌 MCP personalizados</h4><button type="button" onClick={()=>setAdding(!adding)} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200">{adding?'Cancelar':'Agregar servidor MCP'}</button></div>
-    <p className="text-xs text-gray-400">Conectá servidores remotos por URL y elegí qué managers o agentes pueden usarlos en web y Telegram. Jetree se conecta desde la VPS; tu PC puede estar apagada.</p>
+    <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-semibold text-white">🔌 MCP personalizados</h4><button type="button" disabled={Boolean(busy)} onClick={()=>adding?setAdding(false):choosePreset('custom')} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200">{adding?'Cancelar':'Agregar servidor MCP'}</button></div>
+    <p className="text-xs text-gray-400">Conectá tus cuentas y vaults por usuario y elegí qué managers o agentes pueden usarlos en web y Telegram. Los servicios locales necesitan que su equipo permanezca encendido.</p>
+    <div className="flex flex-wrap gap-2"><button type="button" disabled={Boolean(busy)} onClick={()=>choosePreset('notion')} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200">Conectar Notion</button><button type="button" disabled={Boolean(busy)} onClick={()=>choosePreset('obsidian')} className="rounded-lg border border-cyan-900 px-3 py-2 text-xs text-cyan-200">Conectar Obsidian</button></div>
     {adding&&<form className="space-y-3 border-t border-gray-800 pt-3" onSubmit={e=>{e.preventDefault();void run({action:'create',name,url,authMode,transport,token,headerName,clientId,clientSecret,issuer});}}>
+      <label className="block text-xs text-gray-300">Servicio<select aria-label="Servicio MCP" className={inputClass} value={preset} onChange={e=>choosePreset(e.target.value as McpPreset)}><option value="custom">MCP personalizado</option><option value="notion">Notion</option><option value="obsidian">Obsidian · local o Sync</option></select></label>
+      <NotesMcpGuide preset={preset}/>
       <label className="block text-xs text-gray-300">Nombre del MCP<input aria-label="Nombre del MCP" className={inputClass} value={name} onChange={e=>setName(e.target.value)} required maxLength={100}/></label>
       <label className="block text-xs text-gray-300">URL del servidor MCP<input aria-label="URL del servidor MCP" className={inputClass} type="url" value={url} onChange={e=>setUrl(e.target.value)} required maxLength={2048} placeholder="https://servidor.example/mcp"/></label>
       <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-gray-300">Autenticación<select aria-label="Autenticación MCP" className={inputClass} value={authMode} onChange={e=>setAuthMode(e.target.value)}><option value="none">Sin autenticación</option><option value="token">Token / API key</option><option value="oauth">OAuth</option></select></label><label className="text-xs text-gray-300">Transporte<select aria-label="Transporte MCP" className={inputClass} value={transport} onChange={e=>setTransport(e.target.value)}><option value="auto">Automático</option><option value="streamable_http">Streamable HTTP</option><option value="sse">SSE clásico</option></select></label></div>
