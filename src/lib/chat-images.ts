@@ -21,6 +21,16 @@ export function imageRequest(text: string, explicit = false): ImageRequest {
   return { generate, prompt: command ? text.replace(/^\/imagen(?:@\w+)?\s*/i, '').trim() : text.trim() };
 }
 
+export function needsImageHistory(text:string,explicitGeneration=false):boolean {
+  if(imageRequest(text,explicitGeneration).generate)return true;
+  const normalized=text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+  const noun='(?:imagen|foto|captura|fotografia|dibujo|image|photo|screenshot|picture)';
+  return new RegExp('\\b(?:esta|esa|aquella|la anterior|la ultima|this|that|previous|last|attached)\\s+'+noun+'\\b').test(normalized)
+    ||new RegExp('\\b'+noun+'\\s+(?:anterior|previa|adjunta|que (?:mande|envie|subi)|previous|above|attached)\\b').test(normalized)
+    ||/\b(?:que ves|que se ve en|what do you see|describe (?:it|what you see))\b/.test(normalized)
+    ||/^(?:y\s+)?(?:de\s+)?que\s+color\s+(?:es|era|tiene)\s*[?.!]*$/.test(normalized.trim());
+}
+
 export function imageAdvice(mode: 'vision' | 'generation', provider: AIProvider): string {
   const local = IMAGE_MODELS[mode][provider];
   const picks = local.length ? local.join(' o ') : mode === 'vision' ? 'Gemini Flash, GPT-4o o Claude Sonnet' : 'Nano Banana (Google), GPT Image (OpenAI) o un modelo de imágenes de OpenRouter';

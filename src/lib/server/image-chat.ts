@@ -1,6 +1,6 @@
 import { executeAgentChat, type ExecutionResult } from '@/lib/agents/orchestrator';
 import { callAIProvider } from '@/lib/agents/provider-adapter';
-import { generationTarget, imageAdvice, imageRequest, type ImageInput } from '@/lib/chat-images';
+import { generationTarget, imageAdvice, imageRequest, needsImageHistory, type ImageInput } from '@/lib/chat-images';
 import { describeImages, generateImage } from './image-provider';
 
 export async function executeImageChat(
@@ -10,6 +10,7 @@ export async function executeImageChat(
   explicitGeneration = false,
 ) {
   const [agent, message, , history = [], keys = {}] = args;
+  if(!receivedImage&&!needsImageHistory(message,explicitGeneration))images=[];
   images = images.slice(-3);
   while (images.length > 1 && images.reduce((total, image) => total + image.bytes.length, 0) > 12 * 1024 * 1024) images.shift();
   const request = imageRequest(message, explicitGeneration);
@@ -25,7 +26,7 @@ export async function executeImageChat(
     ];
     return { reply: `Imagen generada con ${target.model}.\n\n${imageAdvice('generation', target.provider)}`, delegation: undefined, logs, generatedImage: image, imageProvider: target.provider, imageModel: target.model };
   }
-  args[5] = images.length ? (actingAgent, prompt, apiKeys) => describeImages(actingAgent, prompt, images, apiKeys[actingAgent.provider]) : callAIProvider;
+  args[5] = images.length ? (actingAgent, prompt, apiKeys) => describeImages(actingAgent, prompt, images, apiKeys[actingAgent.provider]) : args[5] || callAIProvider;
   const result = await executeAgentChat(...args);
   if (receivedImage) result.reply = `${result.reply.slice(0, 11000)}\n\n${imageAdvice('vision', agent.provider)}`;
   return { ...result, generatedImage: undefined, imageProvider: undefined, imageModel: undefined };

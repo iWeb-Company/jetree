@@ -41,6 +41,7 @@ try {
   assert.notEqual((await fetch(process.env.NEXT_PUBLIC_SUPABASE_URL + '/storage/v1/object/public/chat-images/' + own.id + '/' + imageId + '.png')).status, 200, 'Private bucket must not serve public objects');
   const history = await api(own, '/api/conversations?agentId=' + agent.id); assert.equal(history.body.messages[0].images[0].id, imageId);
   const followup = await api(own, '/api/agents/chat', { agentId: agent.id, conversationId: chat.body.conversationId, message: 'Y de qué color es?' }); assert.equal(followup.status, 200); assert.match(followup.body.reply, /Synthetic image understood/);
+  const textAfterImage=await api(own,'/api/agents/chat',{agentId:agent.id,conversationId:chat.body.conversationId,message:'Buscá documentación pública de Cloudflare Workers.'});assert.equal(textAfterImage.status,200);assert.doesNotMatch(textAfterImage.body.reply,/Consejo de modelos/);assert.equal((await events()).at(-1).references,0,'Text request never forwards historical images');
   for (const provider of ['gemini', 'openai', 'custom']) {
     db(await service.from('agents').update({ image_provider: provider }).eq('id', agent.id));
     const result = await api(own, '/api/agents/chat', { agentId: agent.id, conversationId: chat.body.conversationId, message: 'Generá una imagen de un gato' }); assert.equal(result.status, 200, result.body.error); assert.equal(result.body.images.length, 1);
