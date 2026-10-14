@@ -4,6 +4,7 @@ import { mergeToolMessage } from '@/lib/tool-feedback';
 import ChatApprovals from '@/components/ChatApprovals';
 import FigmaConversationJobs from '@/components/FigmaConversationJobs';
 import ChatImage from '@/components/ChatImage';
+import ChatFile from '@/components/ChatFile';
 import { generationTarget, imageAdvice, imageRequest, type ImageRef } from '@/lib/chat-images';
 import { prepareImageUpload } from '@/lib/image-upload';
 import { PersonalModelDevice, personalModelHeaders } from '@/components/PersonalModelConnections';
@@ -197,6 +198,7 @@ export default function AgentChatDrawer({
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         delegation: data.delegation,
         images: data.images || [],
+        files: data.files || [],
       };
 
       setMessages(prev => [...prev, agentReply]);
@@ -368,6 +370,7 @@ export default function AgentChatDrawer({
                 >
                   <div className="whitespace-pre-wrap">{msg.content}</div>
                   {msg.images?.map(image => <ChatImage key={image.id} image={image} />)}
+                  {msg.files?.map(file => <ChatFile key={file.id} file={file} />)}
 
                   {/* Badge de derivación si hubo subordinado ejecutando */}
                   {msg.delegation && (

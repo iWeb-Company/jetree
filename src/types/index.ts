@@ -90,6 +90,7 @@ export type AgentActivityLog = {
 };
 
 export type ChatMessage = {
+  files?: Array<{ id: string; name: string; mimeType: string; byteSize: number }>;
   images?: Array<{ id: string; kind: 'received' | 'generated'; mimeType: string }>;
   id: string;
   agentId: string;

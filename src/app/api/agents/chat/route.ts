@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { FILE_TOOL_ID, type FileRef } from '@/lib/generated-files';
+import { saveChatFile, attachChatFiles } from '@/lib/server/chat-file-store';
 import { requireUser, getServiceSupabase } from '@/lib/server/auth';
 import { getUserProviderApiKey } from '@/lib/server/provider-secrets';
 import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-adapter';
@@ -199,11 +201,19 @@ export async function POST(request: Request) {
       return [{ role: item.role as 'user' | 'assistant', content: item.content.slice(0, 6000) }];
     });
 
+    const resultFiles: FileRef[] = [];
     const result = await executeImageChat([agent, message, availableAgents, history, apiKeys,
       undefined, async delegation => {
       const { error } = await service.from('agent_executions').update({ delegation }).eq('id', executionId);
       if (error) throw new AgentEngineError('PERSISTENCE_FAILED');
-    }, (executingAgent, toolId, operation, input) => executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId)], images, Boolean(pendingImage), body.generateImage === true);
+    }, async (executingAgent, toolId, operation, input) => {
+      if (toolId === FILE_TOOL_ID) {
+        if (operation !== 'create_file' || resultFiles.length >= 3) throw new Error('FILE_INPUT_INVALID');
+        const file = await saveChatFile(service, user.id, agent.id, execution.id, input);
+        resultFiles.push(file); return { result: file };
+      }
+      return executeAuthorizedTool(client, user.id, executingAgent.id, toolId, operation, input, undefined, conversationId);
+    }], images, Boolean(pendingImage), body.generateImage === true);
     const resultImages = result.generatedImage ? [await saveChatImage(service, user.id, agent.id, result.generatedImage.bytes, 'generated')] : [];
     const { data: assistantMessage, error: assistantMessageError } = await service.from('messages').insert({
       conversation_id: conversationId,
@@ -214,6 +224,7 @@ export async function POST(request: Request) {
     }).select('id').single();
     if (assistantMessageError || !assistantMessage) throw new AgentEngineError('PERSISTENCE_FAILED');
     for (const image of resultImages) await attachChatImage(service, image.id, assistantMessage.id);
+    await attachChatFiles(service, resultFiles.map(file => file.id), assistantMessage.id);
     const { error: completionError } = await service.from('agent_executions').update({
       status: 'completed',
       provider: result.imageProvider || agent.provider,
@@ -226,7 +237,7 @@ export async function POST(request: Request) {
     await service.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
 
     const { generatedImage: _bytes, ...publicResult } = result;
-    return NextResponse.json({ ...publicResult, images: resultImages, conversationId });
+    return NextResponse.json({ ...publicResult, images: resultImages, files: resultFiles, conversationId });
   } catch (error) {
     const code = error instanceof Error ? error.message : '';
     if (executionService && executionId) {

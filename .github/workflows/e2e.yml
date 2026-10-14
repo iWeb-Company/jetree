@@ -42,6 +42,7 @@ jobs:
           node tests/integration/gmail-search-tasks.mjs
           node tests/integration/telegram-tools.mjs
           node tests/integration/chat-images.mjs
+          node tests/integration/chat-files.mjs
           node tests/integration/figma.mjs
           node tests/integration/coding-sessions.mjs
           node tests/integration/custom-mcp.mjs
@@ -55,6 +56,7 @@ jobs:
             artifacts/tasks-grouped-*.png
             artifacts/telegram-tools-*.png
             artifacts/chat-images-*.png
+            artifacts/chat-files-*.png
             artifacts/figma-*.png
             artifacts/coding-*.png
             artifacts/custom-mcp-*.png
