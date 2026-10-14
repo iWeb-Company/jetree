@@ -1,7 +1,7 @@
 import type { Agent } from '@/types';
 import type { ProviderCall } from './provider-adapter';
 import { assertToolEnabled, parseToolRequest, TOOL_CONNECTORS } from './tool-catalog';
-import { FILE_TOOL, FILE_TOOL_ID, parseFileSpec } from '@/lib/generated-files';
+import { FILE_TOOL, FILE_TOOL_ID, parseFileSpec, requestsGeneratedFile } from '@/lib/generated-files';
 
 export type ToolRunner = (agent: Agent, toolId: string, operation: string, input: Record<string, unknown>) => Promise<{
   pendingApproval?: boolean; approvalId?: string; result?: unknown;
@@ -18,15 +18,16 @@ export function conversationToolGuidance(agent: Agent): string {
     + '\nUsá el historial para interpretar referencias como «ese correo», «contestale» o «más videos sobre eso». Si hay varios candidatos o falta el destinatario, preguntá antes de actuar.'
     + '\nPara responder un correo, leé primero el mensaje real y verificá destinatario y contenido. Borrar significa mover a papelera, nunca eliminar definitivamente.'
     + '\nLas búsquedas y lecturas necesitan resultados de herramientas antes de responder; no inventes correos, enlaces ni operaciones realizadas.'
-    + '\nConectores permitidos para este agente: ' + (enabled.map(item => item.id).join(', ') || 'ninguno') + '.'
-    + '\nSi el conector necesario no está habilitado, explicá que debe habilitarse en la configuración del agente. Nunca lo actives ni sustituyas sus permisos automáticamente.';
+    + '\nConectores permitidos para este agente: ' + (enabled.map(item => item.id).join(', ') || 'ninguno') + ' (esta lista solo corresponde a servicios externos).'
+    + '\nHerramienta interna autorizada para este agente: jetree-files/create_file. Está siempre disponible, incluso si la lista de conectores externos está vacía; no requiere activación ni conexión adicional.'
+    + '\nSi un conector externo necesario no está habilitado, explicá que debe habilitarse en la configuración del agente. Nunca lo actives ni sustituyas sus permisos automáticamente. Esta restricción no aplica a jetree-files.';
 }
 
 // A bounded structured decision loop works across all existing text providers.
 // The model proposes actions; authorization and approval remain server-side.
 export async function respondWithTools(agent: Agent, prompt: string, apiKeys: Record<string, string>, call: ProviderCall, run?: ToolRunner): Promise<string> {
   const connectors = [...TOOL_CONNECTORS.filter(item => agent.enabledPluginIds?.includes(item.id)), FILE_TOOL];
-  if (!run || (connectors.length === 1 && !/\b(pdf|excel|xlsx|html)\b/i.test(prompt))) return call(agent, prompt + conversationToolGuidance(agent), apiKeys);
+  if (!run || (connectors.length === 1 && !requestsGeneratedFile(prompt))) return call(agent, prompt + conversationToolGuidance(agent), apiKeys);
   const contract = '\nHerramientas disponibles: ' + JSON.stringify(connectors)
     + conversationToolGuidance(agent)
     + '\nElegí la herramienta según la solicitud. Respondé solamente un objeto JSON: '
@@ -40,6 +41,7 @@ export async function respondWithTools(agent: Agent, prompt: string, apiKeys: Re
   if (resultBudget < 100) throw new Error('AGENT_CONTEXT_TOO_LARGE');
   const seen = new Set<string>();
   let correctedDraft = false;
+  let correctedFiles = false;
   for (let step = 0; step < 5; step++) {
     const raw = await call(agent, context + contract, apiKeys);
     let decision: Record<string, unknown>;
@@ -48,6 +50,12 @@ export async function respondWithTools(agent: Agent, prompt: string, apiKeys: Re
       if (!decision || typeof decision !== 'object' || Array.isArray(decision)) throw new Error();
     } catch { return 'No pude interpretar la operación. No se ejecutó ninguna acción en este paso; reformulá la solicitud.'; }
     if (typeof decision.answer === 'string' && decision.answer.trim() && !decision.toolId) {
+      if (requestsGeneratedFile(prompt) && /jetree-files|herramienta.*(?:crear|generar).*archiv/i.test(decision.answer) && /no tengo|no (?:est[aá]|dispongo|puedo)|no.*habilitad/i.test(decision.answer)) {
+        if (correctedFiles) return 'No pude preparar el archivo con este modelo. No se creó ningún archivo; volvé a pedirlo o elegí otro modelo.';
+        correctedFiles = true;
+        context += '\nCorrección del servidor: jetree-files/create_file es una capacidad interna autorizada y disponible para todos, no un conector externo. Para crear el archivo solicitá esa operación con su contenido; no digas que requiere habilitar un conector.';
+        continue;
+      }
       // Only the server-side runner can create an approval and its buttons.
       // Models sometimes copy an old draft from history as an answer.
       if (/prepar[eé] la acci[oó]n|(?:qued[oó]|est[aá]|queda) pendiente de (?:tu |su |una )?aprobaci[oó]n|(?:^|\n)\s*acci[oó]n pendiente\s*:|(?:necesito|requiero|solicito|espero|esperar[eé]) (?:tu |su |una )?(?:aprobaci[oó]n|consentimiento)|(?:confirm[aá]|confirm[eé]s|confirma) que (?:quer[eé]s|quieres|deseas) que contin[uú]e/i.test(decision.answer)) {

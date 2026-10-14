@@ -65,7 +65,7 @@ globalThis.fetch = async (input, options) => {
     const operation = url.pathname.split('/').at(-1);
     const requestBody = options?.body instanceof FormData ? Object.fromEntries(options.body.entries()) : options?.body ? JSON.parse(options.body) : {};
     await mkdir('artifacts', { recursive: true });
-    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id, replyMarkup: requestBody.reply_markup, creditsNotice: requestBody.text?.includes('no tiene saldo suficiente') === true, modelUnavailableNotice: requestBody.text?.includes('El modelo del agente no está disponible') === true }) + '\n');
+    await appendFile('artifacts/telegram-fixture-events.jsonl', JSON.stringify({ operation, chatId: requestBody.chat_id, fileId: requestBody.file_id, replyMarkup: requestBody.reply_markup, creditsNotice: requestBody.text?.includes('no tiene saldo suficiente') === true, modelUnavailableNotice: requestBody.text?.includes('El modelo del agente no está disponible') === true, workspaceQuotaNotice: requestBody.text?.includes('límite diario de ejecuciones de Jetree') === true }) + '\n');
     if (operation === 'getFile') return Response.json({ ok: true, result: requestBody.file_id?.startsWith('synthetic_image') ? { file_path: 'photos/synthetic.png', file_size: syntheticImage.length } : { file_path: 'voice/synthetic.oga', file_size: 4 } });
     if (operation === 'synthetic.oga') return new Response('ogg!');
     if (operation === 'synthetic.png') return new Response(syntheticImage, { headers: { 'Content-Type': 'image/png' } });
@@ -109,6 +109,7 @@ globalThis.fetch = async (input, options) => {
     assert.ok(['synthetic-deepseek','synthetic-custom:free','synthetic-groq'].includes(body.model));
     const toolPrompt = body.messages?.map(item => item.content).join('\n') || '';
     const fileFormat = [...toolPrompt.matchAll(/\[Files CI (pdf|xlsx|html)\]/g)].at(-1)?.[1];
+    if (fileFormat && toolPrompt.includes('Contrato directo:')) return Response.json({ choices: [{ message: { content: JSON.stringify({ decision: 'direct', managerNotes: 'Internal file capability', directResponse: 'Must call file tool next' }) } }] });
     if (fileFormat) return Response.json({ choices: [{ message: { content: JSON.stringify({ toolId: 'jetree-files', operation: 'create_file', input: fileFormat === 'xlsx' ? { format: 'xlsx', name: 'Presupuesto', title: 'Presupuesto', sheets: [{ name: 'Datos', rows: [['Concepto','Importe'],['Prueba',42]] }] } : { format: fileFormat, name: 'Informe', title: 'Prueba', content: fileFormat === 'pdf' ? 'Informe sintético con información verificada.' : '<!doctype html><html><body><h1>Prueba</h1></body></html>' } }) } }] });
     if (toolPrompt.includes('[Telegram tools CI]')) {
       let decision;

@@ -30,3 +30,25 @@ test('all agent roles can create files without granting access to external conne
     assert.equal(calls,1); assert.match(result.reply,/Creé Prueba.pdf/);
   }
 });
+
+test('a manager with subordinates and no external connectors still creates a requested file', async () => {
+  const specialist = { id:'specialist',name:'Specialist',departmentId:'d',description:'',roleType:'independent',subordinateIds:[],enabledPluginIds:[],provider:'groq',model:'chosen',systemPrompt:'',status:'idle' } as Agent;
+  const manager = { ...specialist, id:'manager',name:'Manager',roleType:'manager',subordinateIds:[specialist.id] } as Agent;
+  let steps = 0; let writes = 0;
+  const result = await executeAgentChat(manager, 'Creá un PDF', [specialist], [], {}, async () => {
+    if (++steps === 1) return JSON.stringify({decision:'direct',managerNotes:'Crear archivo',directResponse:'Respuesta sin archivo'});
+    return JSON.stringify({toolId:FILE_TOOL_ID,operation:'create_file',input:{format:'pdf',name:'Manager',content:'Prueba'}});
+  }, undefined, async () => { writes++;return {result:{id:'file'}}; });
+  assert.equal(steps,2);assert.equal(writes,1);assert.match(result.reply,/Creé Manager.pdf/);
+});
+
+test('false claims that the internal file capability is disabled get one bounded correction', async () => {
+  const agent = { id:'a',name:'Agent',description:'',departmentId:'d',roleType:'independent',provider:'groq',model:'chosen',systemPrompt:'',status:'idle',enabledPluginIds:[] } as Agent;
+  let steps=0;
+  const result=await executeAgentChat(agent,'Creá un HTML',[],[],{},async (_agent,prompt)=>{
+    if(++steps===1)return JSON.stringify({answer:'No tengo disponible la herramienta para crear archivos (jetree-files) en mis conectores permitidos.'});
+    assert.match(prompt,/Corrección del servidor: jetree-files/);
+    return JSON.stringify({toolId:FILE_TOOL_ID,operation:'create_file',input:{format:'html',name:'Página',content:'<html></html>'}});
+  },undefined,async()=>({result:{id:'file'}}));
+  assert.equal(steps,2);assert.match(result.reply,/Creé Página.html/);
+});
