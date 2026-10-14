@@ -2,6 +2,8 @@
 
 En **Herramientas → MCP personalizados**, agregá el nombre y la URL HTTPS pública del servidor. Elegí autenticación sin credenciales, token/API key o OAuth, y transporte automático, Streamable HTTP o SSE clásico. Jetree descubre las herramientas, recursos y prompts que anuncia el servidor.
 
+**Conectar Notion** prepara el MCP oficial con OAuth. **Conectar Obsidian** prepara autenticación Bearer para el complemento Local REST API with MCP; cada usuario ingresa la URL HTTPS accesible y el token de su vault. Ambas opciones tienen una guía breve cerrada por defecto. La [guía de notas](/ayuda/notas) explica vaults locales, copias con Sync y túneles. No se instala ni configura una cuenta o vault compartido para todo Jetree.
+
 Asigná cada conexión a los managers y agentes que deban usarla. La asignación habilita el conector MCP en ese agente; las conexiones pertenecen al usuario que las creó. Los mismos permisos y aprobaciones se usan en el chat web y Telegram. El servidor recibe los argumentos de las herramientas; conectá solo servidores de confianza. Las respuestas y descripciones del MCP son contenido externo, no instrucciones que puedan ampliar permisos.
 
 Las llamadas a herramientas, lecturas de recursos y recuperación de prompts requieren aprobación por defecto. En **Herramientas y aprobaciones** podés autorizar herramientas individuales como lectura automática. Los `readOnlyHint` enviados por el servidor no conceden permisos. Cambiar su definición invalida la autorización automática y las aprobaciones anteriores. Desconectar elimina credenciales y asignaciones de Jetree; para OAuth también podés revocar el permiso desde el proveedor.
