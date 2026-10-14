@@ -29,4 +29,6 @@ test('activity rejects invalid batches and removes secrets and hidden fields',()
   assert.throws(()=>codingActivity([{sequence:501,kind:'tool',status:'completed',label:'bash'}]));
   assert.throws(()=>codingActivity([{sequence:1,kind:'reasoning',status:'completed',label:'hidden'}]));
   assert.throws(()=>codingActivity(Array(21).fill(event)));
+  const [unicode]=codingActivity([{sequence:1,kind:'message',status:'completed',label:'界'.repeat(600),output:'界'.repeat(4096)}]);
+  assert.ok(Buffer.byteLength(JSON.stringify(unicode))<7000,'Unicode output fits the database byte limit');
 });
