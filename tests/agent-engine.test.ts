@@ -49,6 +49,35 @@ test('missing approval explanations are not mistaken for fabricated drafts', asy
   assert.match(result.reply, /Indicá el destinatario/);
 });
 
+test('a conversational MCP approval request must become a real server-side draft', async () => {
+  for (const answer of [
+    'Para realizar la búsqueda en el MCP de Cloudflare Docs necesito tu aprobación. Por favor, confirma que quieres que continúe con la operación.',
+    'Confirmá que querés que continúe con la operación.',
+  ]) {
+    const agent = { ...specialist, enabledPluginIds: ['plugin-custom-mcp'] };
+    let decisions = 0;
+    let calls = 0;
+    const result = await executeAgentChat(agent, 'Buscá documentación pública y esperá aprobación', [], [], {}, async (_agent, prompt) => {
+      if (++decisions === 1) return JSON.stringify({ answer });
+      assert.match(prompt, /todavía no se creó una aprobación/);
+      return JSON.stringify({ toolId: 'plugin-custom-mcp', operation: 'list_mcp_servers', input: {} });
+    }, undefined, async () => { calls++; return { pendingApproval: true, approvalId: 'server-approval' }; });
+    assert.equal(decisions, 2);
+    assert.equal(calls, 1);
+    assert.match(result.reply, /pendiente de tu aprobación/);
+  }
+});
+
+test('repeated conversational approval requests cannot be returned as a real draft', async () => {
+  let decisions = 0;
+  const result = await executeAgentChat({ ...specialist, enabledPluginIds: ['plugin-custom-mcp'] }, 'Buscá documentación', [], [], {}, async () => {
+    decisions++;
+    return JSON.stringify({ answer: 'Necesito tu aprobación.' });
+  }, undefined, async () => { assert.fail('No operation proposed'); });
+  assert.equal(decisions, 2);
+  assert.match(result.reply, /No pude crear un borrador real/);
+});
+
 test('a delegated follow-up retains the original mail reference and waits for approval', async () => {
   const mailAgent = { ...specialist, enabledPluginIds: ['plugin-gmail-core'] };
   let step = 0;

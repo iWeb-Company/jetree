@@ -118,7 +118,7 @@ globalThis.fetch = async (input, options) => {
       } else if (toolPrompt.includes('Mandá un correo de prueba')) {
         decision = toolPrompt.includes('Corrección del servidor: todavía no se creó una aprobación')
           ? { toolId: 'plugin-gmail-core', operation: 'send_message', input: { to: 'recipient@example.invalid', subject: 'Synthetic Telegram email', body: 'Synthetic body' } }
-          : { answer: 'Preparé la acción y quedó pendiente de tu aprobación.\nAcción pendiente: send_message' };
+          : { answer: 'Para realizar la operación necesito tu aprobación. Por favor, confirma que quieres que continúe con la operación.' };
       } else if (toolPrompt.includes('Buscá videos')) {
         decision = toolPrompt.includes('Resultados externos anteriores') ? { answer: 'Synthetic video found' } : { toolId: 'plugin-web-search', operation: 'search_youtube', input: { query: 'synthetic videos' } };
       } else if (!toolPrompt.includes('Resultados externos anteriores')) {
