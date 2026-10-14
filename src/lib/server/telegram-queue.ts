@@ -6,7 +6,7 @@ import { audioFormat, downloadTelegramAudio, transcribeTelegramAudio, transcript
 import { claimToolApproval, executeAuthorizedTool, finishToolApproval, rejectToolApproval } from './agent-tools';
 import { isTelegramApprovalReply, telegramApprovalKeyboard, telegramToolIdentityMatches } from '@/lib/telegram-tool-consent';
 import { toolErrorMessage } from '@/lib/tool-feedback';
-import { generationTarget, imageAdvice, imageErrorMessage, imageRequest } from '@/lib/chat-images';
+import { generationTarget, imageAdvice, imageErrorMessage, imageRequest, needsImageHistory } from '@/lib/chat-images';
 import { attachChatImage, cleanupPendingImages, readChatImage, recentConversationImages, saveChatImage } from './chat-image-store';
 import { executeImageChat } from './image-chat';
 import { deliverTelegramImage, downloadTelegramImage } from './telegram-images';
@@ -302,7 +302,7 @@ async function processUpdate(service: ReturnType<typeof getServiceSupabase>, upd
       update.input_image_id = image.id;
       await attachChatImage(service, image.id, userMessageId);
     }
-    const images = await recentConversationImages(service, conversationId, update.input_image_id ? [update.input_image_id] : []);
+    const images = needsImageHistory(update.message_text)?await recentConversationImages(service, conversationId, update.input_image_id ? [update.input_image_id] : []):[];
     if (update.input_image_id) {
       const { data: row, error } = await service.from('chat_images').select('*').eq('id', update.input_image_id).eq('agent_id', agent.id).maybeSingle();
       if (error || !row) throw new Error('IMAGE_STORAGE_FAILED');

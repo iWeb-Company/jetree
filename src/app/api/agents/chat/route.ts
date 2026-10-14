@@ -5,7 +5,7 @@ import { AgentEngineError, providerErrorMessage } from '@/lib/agents/provider-ad
 import { Agent, AIProvider } from '@/types';
 import { executeAuthorizedTool } from '@/lib/server/agent-tools';
 import { selectedModelSource } from '@/lib/model-device-contract';
-import { generationTarget, imageErrorMessage, type ImageInput } from '@/lib/chat-images';
+import { generationTarget, imageErrorMessage, needsImageHistory, type ImageInput } from '@/lib/chat-images';
 import { attachChatImage, ownedPendingImage, readChatImage, recentConversationImages, saveChatImage } from '@/lib/server/chat-image-store';
 import { executeImageChat } from '@/lib/server/image-chat';
 
@@ -157,7 +157,7 @@ export async function POST(request: Request) {
 
     const service = getServiceSupabase();
     const pendingImage = imageId ? await ownedPendingImage(service, imageId, user.id, agent.id) : null;
-    const images: ImageInput[] = await recentConversationImages(service, conversationId);
+    const images: ImageInput[] = needsImageHistory(message,body.generateImage===true)?await recentConversationImages(service, conversationId):[];
     if (pendingImage) images.push({ ...await readChatImage(service, pendingImage), label: 'Imagen del mensaje actual' });
     const dailyLimit = Number(process.env.JETREE_WORKSPACE_DAILY_EXECUTION_LIMIT);
     if (!Number.isSafeInteger(dailyLimit) || dailyLimit < 1) {
