@@ -13,6 +13,8 @@ test('support retrieves relevant, versioned product documentation', () => {
   assert.equal(retrieveSupportArticles('organigrama arbol departamento')[0].id, 'organization');
   assert.equal(retrieveSupportArticles('zzzxqwv')[0], undefined);
   assert.ok(retrieveSupportArticles('xlsx excel')[0].content.includes('no se calculan'));
+  assert.equal(retrieveSupportArticles('exportar datos json')[0].id, 'export');
+  assert.equal(retrieveSupportArticles('papelera restaurar recuperar')[0].id, 'archive');
 });
 
 test('support limits concurrency, per-user bursts, daily totals and resets UTC day', () => {
