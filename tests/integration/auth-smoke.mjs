@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 const origin = new URL(process.env.JETREE_SMOKE_URL || 'http://127.0.0.1:3057');
 assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname), 'Use a local disposable server');
 const cases = [
+  ['POST', '/api/support/chat', 401],
   ['GET', '/api/agents', 401],
   ['POST', '/api/agents', 401],
   ['GET', '/api/departments', 401],
