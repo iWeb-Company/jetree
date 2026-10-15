@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
+import OrganizationChart from '@/components/OrganizationChart';
+import SupportChat from '@/components/SupportChat';
 import CodingSessionsPanel from '@/components/CodingSessionsPanel';
 import DepartmentTree from '@/components/DepartmentTree';
 import AgentCard from '@/components/AgentCard';
@@ -65,7 +67,7 @@ function mapTaskRow(row: any): Task {
 
 export default function Home() {
   // Navegación de pestañas
-  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity' | 'coding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'departments' | 'agents' | 'activity' | 'coding' | 'organization'>('overview');
 
   // Filtro por departamento (para Dashboard General, Estructura de Nodos y Agentes IA)
   const [selectedDepartmentFilter, setSelectedDepartmentFilter] = useState<string>('all');
@@ -728,7 +730,7 @@ export default function Home() {
         <nav aria-label="Navegación móvil" className="md:hidden flex flex-wrap gap-2 border-b border-cyan-950/40 p-3">
           {([
             ['coding', 'Código'], ['overview', 'Panel General'], ['departments', 'Estructura de Nodos'],
-            ['agents', 'Agentes IA'], ['activity', 'Monitoreo en Vivo'],
+            ['agents', 'Agentes IA'], ['activity', 'Monitoreo en Vivo'], ['organization', 'Organigrama'],
           ] as const).map(([tab, label]) => (
             <button key={tab} aria-current={activeTab === tab ? 'page' : undefined} onClick={() => setActiveTab(tab)} className={`rounded-lg px-3 py-2 text-xs ${activeTab === tab ? 'bg-cyan-500/20 text-cyan-200' : 'bg-gray-900 text-gray-300'}`}>{label}</button>
           ))}
@@ -808,6 +810,7 @@ export default function Home() {
           {/* PESTAÑA 1: PANEL GENERAL (OVERVIEW)                     */}
           {/* -------------------------------------------------------- */}
           {activeTab === 'coding' && <CodingSessionsPanel agents={agents} />}
+          {activeTab === 'organization' && <OrganizationChart departments={departments} agents={agents} tasks={tasks} onChat={openChatWithAgent} onEdit={agent => { setAgentToEdit(agent); setIsAgentModalOpen(true); }} />}
           {activeTab === 'overview' && (
             <div className="space-y-8">
               {/* Tablero Kanban de Tareas con Filtro por Departamento */}
@@ -1070,6 +1073,11 @@ export default function Home() {
       />
 
       {/* DRAWER / CHAT CON CUALQUIER AGENTE O MANAGER */}
+      {!isChatOpen && !isAgentModalOpen && !isApiModalOpen && !isToolConnectionsOpen && !isTelegramModalOpen && !departmentForMembers && !isArchivedItemsOpen && <SupportChat key={session.user.id} onNavigate={action => {
+        if (action === 'connections') setIsApiModalOpen(true);
+        else if (action === 'tools') setIsToolConnectionsOpen(true);
+        else setActiveTab(action);
+      }} />}
       <AgentChatDrawer
         isOpen={isChatOpen}
         agent={chatAgent}
