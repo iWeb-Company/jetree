@@ -46,6 +46,7 @@ jobs:
           node tests/integration/figma.mjs
           node tests/integration/coding-sessions.mjs
           node tests/integration/custom-mcp.mjs
+          node tests/integration/organization-support-ui.mjs
       - name: Save API connection screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -61,6 +62,7 @@ jobs:
             artifacts/coding-*.png
             artifacts/custom-mcp-*.png
             artifacts/notes-mcp-*.png
+            artifacts/organization-support/*.png
       - name: Stop disposable database
         if: always()
         run: npx --yes supabase@2.120.0 stop --workdir "$RUNNER_TEMP/jetree-supabase" --no-backup

@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-type TabType = 'overview' | 'departments' | 'agents' | 'activity' | 'coding';
+type TabType = 'overview' | 'departments' | 'agents' | 'activity' | 'coding' | 'organization';
 
 interface SidebarProps {
   activeTab: TabType;
@@ -28,6 +28,7 @@ export default function Sidebar({ activeTab, setActiveTab, userEmail, onLogout }
 
         {/* Menú de Navegación */}
         <nav className="p-4 space-y-1.5">
+          <button onClick={() => setActiveTab('organization')} aria-current={activeTab === 'organization' ? 'page' : undefined} className={`w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-medium ${activeTab === 'organization' ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'}`}>♧ Organigrama</button>
           <button onClick={()=>setActiveTab('coding')} className={`w-full text-left px-3.5 py-2.5 rounded-lg text-sm font-medium ${activeTab==='coding'?'bg-cyan-500/10 text-cyan-400 border border-cyan-500/30':'text-gray-400 hover:text-gray-200 hover:bg-gray-900/50'}`}>Código</button>
           <button 
             onClick={() => setActiveTab('overview')}
