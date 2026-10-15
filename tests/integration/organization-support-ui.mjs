@@ -18,7 +18,7 @@ try {
  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
  const errors = []; page.on('pageerror', error => errors.push(error.message));
  let calls = 0; let fail = false; let documentation = false;
- await page.route('**/api/support/chat', async route => { calls++; const body = route.request().postDataJSON(); assert.ok(body.messages.every(message => ['user', 'assistant'].includes(message.role))); assert.equal(route.request().headers().authorization, 'Bearer synthetic-test-only'); await route.fulfill({ status: fail ? 429 : 200, contentType: 'application/json', body: JSON.stringify(fail ? { error: 'Cuota de prueba agotada.' } : documentation ? { answer: 'Las fórmulas XLSX se guardan como texto, no se calculan.', mode: 'documentation', notice: 'No se pudo obtener una respuesta de la IA. Te muestro documentación local.', sources: [{ id: 'files', title: 'Crear PDF, Excel y HTML' }] } : { answer: 'En Conexiones IA podés conectar Google, Claude, OpenAI, OpenRouter, DeepSeek y Groq.', mode: 'ai', sources: [{ id: 'models', title: 'Claves API y modelos', action: 'connections' }] }) }); });
+ await page.route('**/api/support/chat', async route => { calls++; const body = route.request().postDataJSON(); assert.ok(body.messages.every(message => ['user', 'assistant'].includes(message.role))); assert.equal(route.request().headers().authorization, 'Bearer synthetic-test-only'); await route.fulfill({ status: fail ? 429 : 200, contentType: 'application/json', body: JSON.stringify(fail ? { error: 'Cuota de prueba agotada.' } : documentation ? { answer: 'Las fórmulas XLSX se guardan como texto, no se calculan.', mode: 'documentation', notice: 'No se pudo obtener una respuesta de la IA. Te muestro documentación local.', sources: [{ id: 'files', title: 'Crear PDF, Excel y HTML' }] } : { answer: 'En Conexiones IA podés conectar Google, Claude, OpenAI, OpenRouter, DeepSeek y Groq.', mode: 'ai', notice: 'La IA seleccionó estas secciones de la documentación revisada de Jetree.', sources: [{ id: 'models', title: 'Claves API y modelos', action: 'connections' }] }) }); });
  await page.goto('http://127.0.0.1:' + server.address().port);
  await page.getByRole('heading', { name: 'Organigrama', exact: true }).waitFor();
  await page.screenshot({ path: resolve(directory, 'desktop.png') });
@@ -39,6 +39,8 @@ try {
  await page.getByRole('button', { name: '¿Cómo conecto mi API?' }).click();
  await page.getByText('Documentación consultada').waitFor();
  assert.equal(calls, 1);
+ await page.getByText('Ayuda Jetree · Guía documentada', { exact: true }).waitFor();
+ assert.ok(await page.getByText('La IA seleccionó estas secciones de la documentación revisada de Jetree.', { exact: true }).isVisible());
  await page.screenshot({ path: resolve(directory, 'support-desktop.png') });
  await page.getByRole('button', { name: 'Abrir sección ↗' }).click();
  assert.equal(await page.getByTestId('action').textContent(), 'connections');
