@@ -25,7 +25,9 @@ Entrada máxima 16 KB, hasta nueve mensajes alternados, 2.000 caracteres por men
 
 ## Mantener la ayuda
 
-La base revisable está en `src/lib/support-knowledge.ts`, versionada con la aplicación. La búsqueda selecciona hasta cuatro artículos; no hay navegación, herramientas o RAG sobre documentos privados. Añadir capacidades nuevas aquí y actualizar la fecha al cambiar comportamientos. Las fuentes mostradas son documentación seleccionada por Jetree, no verificación automática de cada frase del modelo. La ayuda reconoce funciones pendientes de validación y deriva al administrador si desconoce el caso.
+La base revisable está en `src/lib/support-knowledge.ts`, versionada con la aplicación. La búsqueda propone hasta cuatro artículos; no hay navegación, herramientas o RAG sobre documentos privados. La IA solo puede elegir hasta dos IDs de esa lista, usando un JSON estricto. El servidor valida IDs, unicidad y formato, y compone la respuesta exclusivamente con el texto revisado de esos artículos. No se muestra prosa libre del modelo, aunque venga acompañada de IDs válidos. Si elige una lista vacía, se pide aclaración con un texto fijo. Respuestas malformadas, IDs fuera del conjunto y campos extra activan el respaldo documental. La interfaz explica cuándo la IA seleccionó documentación y cuándo se usó el respaldo.
+
+Este alcance se adoptó después de observar en dev que el modelo podía inventar pasos de conexión Gmail, generación de claves o requisitos de comentarios Figma a pesar del prompt de fuentes. No promete comprender perfectamente cada pregunta: puede seleccionar una sección poco relevante o requerir aclaración, y la precisión depende de mantener la base revisada. Sí impide que el modelo añada instrucciones libres al contenido mostrado. Añadir capacidades y cambios de configuración en esta base y actualizar su versión. Los comentarios de Figma usan REST sin plugin, conectar Gmail es por usuario más habilitación por agente y elegir modelo no genera una clave: esos puntos se documentan explícitamente.
 
 ## Verificación
 
