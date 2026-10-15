@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 type Source = { id: string; title: string; action?: 'connections' | 'tools' | 'organization' | 'coding' };
-type Message = { role: 'user' | 'assistant'; content: string; sources?: Source[]; failed?: boolean };
+type Message = { role: 'user' | 'assistant'; content: string; sources?: Source[]; failed?: boolean; mode?: string; notice?: string };
 const suggestions = ['¿Cómo conecto mi API?', '¿Qué puede hacer un manager?', '¿Cómo creo un PDF?', '¿Cómo conecto Obsidian?'];
 
 export default function SupportChat({ onNavigate }: { onNavigate: (action: NonNullable<Source['action']>) => void }) {
@@ -35,7 +35,7 @@ export default function SupportChat({ onNavigate }: { onNavigate: (action: NonNu
       const response = await fetch('/api/support/chat', { method: 'POST', headers: { Authorization: `Bearer ${data.session.access_token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: wireHistory }), signal: abort.signal });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'No se pudo consultar la ayuda.');
-      setMessages(current => [...current, { role: 'assistant', content: payload.answer, sources: payload.sources }]);
+      setMessages(current => [...current, { role: 'assistant', content: payload.answer, sources: payload.sources, mode: payload.mode, notice: payload.notice }]);
     } catch (error) {
       if (!abort.signal.aborted) setMessages(current => [...current.slice(0, -1), { role: 'assistant', content: error instanceof Error ? error.message : 'No se pudo consultar la ayuda.', failed: true }]);
       setInput(question);
@@ -48,7 +48,14 @@ export default function SupportChat({ onNavigate }: { onNavigate: (action: NonNu
         <p className="text-xs leading-relaxed text-gray-400">Te explico cómo usar Jetree. No veo tus cuentas ni ejecuto acciones. Evitá claves, correos privados y datos sensibles.</p>
         {!consent ? <div className="rounded-xl border border-cyan-900 bg-cyan-950/20 p-4"><p className="text-sm text-gray-200">Tus preguntas y el historial de esta ayuda se enviarán a OpenRouter y al proveedor gratuito seleccionado, junto con documentación de Jetree. No se incluyen automáticamente datos del workspace.</p><p className="mt-3 text-xs text-gray-400">La conversación se mantiene solo mientras esta pantalla está abierta y se elimina al recargar. «Nueva» borra el historial local de esta ayuda; no elimina datos retenidos por el proveedor.</p><button onClick={() => setConsent(true)} className="mt-4 rounded-lg bg-cyan-400 px-4 py-2 text-xs font-semibold text-gray-950">Entendido, abrir ayuda</button><a href="/ayuda/notas" className="mt-3 block text-xs text-cyan-300">Ver guía de Notion y Obsidian sin IA</a></div> : <>
           {!messages.length && <div className="space-y-2"><p className="text-sm text-gray-200">¿Qué querés hacer?</p>{suggestions.map(question => <button key={question} onClick={() => send(question)} className="block w-full rounded-lg border border-cyan-900/60 p-3 text-left text-xs text-cyan-200 hover:bg-cyan-950/40">{question}</button>)}</div>}
-          <div role="log" aria-label="Conversación de ayuda" aria-live="polite" className="space-y-4">{messages.map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm ${message.role === 'user' ? 'ml-5 bg-cyan-950/50 text-cyan-100' : message.failed ? 'border border-amber-900 bg-amber-950/20 text-amber-200' : 'mr-3 bg-gray-900 text-gray-200'}`}><p className="mb-1 text-[10px] uppercase text-gray-500">{message.role === 'user' ? 'Vos' : message.failed ? 'No se pudo completar' : 'Ayuda Jetree'}</p><p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>{Boolean(message.sources?.length) && <div className="mt-3 border-t border-gray-700 pt-2"><p className="text-[10px] text-gray-500">Documentación consultada</p>{message.sources!.map(source => <div key={source.id} className="mt-1 text-xs text-gray-400">{source.title}{source.action && <button onClick={() => { onNavigate(source.action!); close(); }} className="ml-2 text-cyan-300 hover:underline">Abrir sección ↗</button>}</div>)}</div>}</div>)}</div>
+          <div role="log" aria-label="Conversación de ayuda" aria-live="polite" className="space-y-4">
+            {messages.map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm ${message.role === 'user' ? 'ml-5 bg-cyan-950/50 text-cyan-100' : message.failed ? 'border border-amber-900 bg-amber-950/20 text-amber-200' : 'mr-3 bg-gray-900 text-gray-200'}`}>
+              <p className="mb-1 text-[10px] uppercase text-gray-500">{message.role === 'user' ? 'Vos' : message.failed ? 'No se pudo completar' : message.mode === 'documentation' ? 'Ayuda Jetree · Documentación' : 'Ayuda Jetree'}</p>
+              {message.notice && <p className="mb-3 rounded-lg border border-amber-900/70 bg-amber-950/20 p-2 text-xs text-amber-200">{message.notice}</p>}
+              <p className="whitespace-pre-wrap break-words leading-relaxed">{message.content}</p>
+              {Boolean(message.sources?.length) && <div className="mt-3 border-t border-gray-700 pt-2"><p className="text-[10px] text-gray-500">Documentación consultada</p>{message.sources!.map(source => <div key={source.id} className="mt-1 text-xs text-gray-400">{source.title}{source.action && <button onClick={() => { onNavigate(source.action!); close(); }} className="ml-2 text-cyan-300 hover:underline">Abrir sección ↗</button>}</div>)}</div>}
+            </div>)}
+          </div>
         </>}
         {busy && <p role="status" className="animate-pulse text-xs text-cyan-300">Consultando la documentación…</p>}<div ref={bottom} />
       </div>

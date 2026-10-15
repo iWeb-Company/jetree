@@ -17,8 +17,8 @@ const browser = await chromium.launch({ headless: true });
 try {
  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
  const errors = []; page.on('pageerror', error => errors.push(error.message));
- let calls = 0; let fail = false;
- await page.route('**/api/support/chat', async route => { calls++; const body = route.request().postDataJSON(); assert.ok(body.messages.every(message => ['user', 'assistant'].includes(message.role))); assert.equal(route.request().headers().authorization, 'Bearer synthetic-test-only'); await route.fulfill({ status: fail ? 429 : 200, contentType: 'application/json', body: JSON.stringify(fail ? { error: 'Cuota de prueba agotada.' } : { answer: 'En Conexiones IA podés conectar Google, Claude, OpenAI, OpenRouter, DeepSeek y Groq.', sources: [{ id: 'models', title: 'Claves API y modelos', action: 'connections' }] }) }); });
+ let calls = 0; let fail = false; let documentation = false;
+ await page.route('**/api/support/chat', async route => { calls++; const body = route.request().postDataJSON(); assert.ok(body.messages.every(message => ['user', 'assistant'].includes(message.role))); assert.equal(route.request().headers().authorization, 'Bearer synthetic-test-only'); await route.fulfill({ status: fail ? 429 : 200, contentType: 'application/json', body: JSON.stringify(fail ? { error: 'Cuota de prueba agotada.' } : documentation ? { answer: 'Las fórmulas XLSX se guardan como texto, no se calculan.', mode: 'documentation', notice: 'No se pudo obtener una respuesta de la IA. Te muestro documentación local.', sources: [{ id: 'files', title: 'Crear PDF, Excel y HTML' }] } : { answer: 'En Conexiones IA podés conectar Google, Claude, OpenAI, OpenRouter, DeepSeek y Groq.', mode: 'ai', sources: [{ id: 'models', title: 'Claves API y modelos', action: 'connections' }] }) }); });
  await page.goto('http://127.0.0.1:' + server.address().port);
  await page.getByRole('heading', { name: 'Organigrama', exact: true }).waitFor();
  await page.screenshot({ path: resolve(directory, 'desktop.png') });
@@ -48,11 +48,17 @@ try {
  assert.equal(await page.getByLabel('Pregunta sobre Jetree').inputValue(), 'Cómo hago un PDF');
  await page.getByRole('button', { name: 'Nueva consulta de soporte' }).click();
  assert.equal(await page.getByRole('log').locator('> div').count(), 0);
+ fail = false; documentation = true;
+ await page.getByLabel('Pregunta sobre Jetree').fill('¿El Excel calcula fórmulas?');
+ await page.getByRole('button', { name: 'Enviar', exact: true }).click();
+ await page.getByText('Ayuda Jetree · Documentación', { exact: true }).waitFor();
+ assert.ok(await page.getByText('No se pudo obtener una respuesta de la IA. Te muestro documentación local.', { exact: true }).isVisible());
+ assert.ok(await page.getByText('Las fórmulas XLSX se guardan como texto, no se calculan.', { exact: true }).isVisible());
  await page.setViewportSize({ width: 390, height: 844 });
  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
  await page.screenshot({ path: resolve(directory, 'support-mobile.png') });
  await page.getByRole('button', { name: 'Cerrar ayuda', exact: true }).click();
  await page.screenshot({ path: resolve(directory, 'mobile.png') });
  assert.deepEqual(errors, []);
- console.log('PASS organization search, working teams, navigation, support consent, answers, quota, reset, desktop/mobile; synthetic data only.');
+ console.log('PASS organization search, working teams, navigation, support consent, answers, quota, reset, documentation fallback, desktop/mobile; synthetic data only.');
 } finally { await browser.close(); await new Promise(done => server.close(done)); }
